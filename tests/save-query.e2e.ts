@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { Client } from 'pg'
 import { profileSchema } from '../src/shared/contracts'
-import { inspectElectronSandbox } from './electron-runtime'
+import { inspectElectronSandbox, waitForElectronWorkspace } from './electron-runtime'
 
 const root = resolve(import.meta.dirname, '..')
 async function typeSql(page: Page, sql: string) {
@@ -70,7 +70,7 @@ test('table and ordinary SQL save, reopen without execution, survive restart, an
     page.on('console', (message) => {
       if (message.type() === 'error') errors.push(message.text())
     })
-    await page.waitForFunction(() => !!window.harbor)
+    await waitForElectronWorkspace(page)
     await expect(page).toHaveTitle('Harbor DB')
     await expect(page.getByText('Harbor DB', { exact: true }).first()).toBeVisible()
     await expect(page.locator('vite-error-overlay')).toHaveCount(0)
@@ -282,9 +282,7 @@ test('table and ordinary SQL save, reopen without execution, survive restart, an
     expect(errors).toEqual([])
   } finally {
     if (desktop) {
-      const closed = desktop.waitForEvent('close')
-      await desktop.evaluate(({ app }) => app.exit(0)).catch(() => desktop?.process().kill('SIGTERM'))
-      await closed
+      await desktop.close()
     }
     if (connected) {
       try {

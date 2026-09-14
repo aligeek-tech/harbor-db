@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { Client } from 'pg'
 import { profileSchema, tabSchema } from '../src/shared/contracts'
-import { inspectElectronSandbox } from './electron-runtime'
+import { inspectElectronSandbox, waitForElectronWorkspace } from './electron-runtime'
 
 test('empty PostgreSQL explorer explains its database scope and opens another database without retargeting the original profile', async () => {
   test.skip(process.env.HARBOR_INTEGRATION !== '1', 'Requires the isolated PostgreSQL development service.')
@@ -72,7 +72,7 @@ test('empty PostgreSQL explorer explains its database scope and opens another da
     page.on('console', (message) => {
       if (message.type() === 'error') errors.push(message.text())
     })
-    await page.waitForFunction(() => !!window.harbor)
+    await waitForElectronWorkspace(page)
     await page.evaluate(
       async ({ profile, tab }) => {
         await window.harbor.saveProfile({
@@ -92,7 +92,7 @@ test('empty PostgreSQL explorer explains its database scope and opens another da
       { profile, tab: originalTab },
     )
     await page.reload()
-    await page.waitForFunction(() => !!window.harbor)
+    await waitForElectronWorkspace(page)
     await expect(page).toHaveTitle('Harbor DB')
     expect(page.url()).toMatch(/^file:.*\/out\/renderer\/index\.html$/)
     await expect(page.getByText('Harbor DB', { exact: true }).first()).toBeVisible()
@@ -196,9 +196,7 @@ test('empty PostgreSQL explorer explains its database scope and opens another da
     expect(errors).toEqual([])
   } finally {
     if (desktop) {
-      const closed = desktop.waitForEvent('close')
-      await desktop.evaluate(({ app }) => app.exit(0)).catch(() => desktop?.process().kill('SIGTERM'))
-      await closed
+      await desktop.close()
     }
     if (adminConnected) {
       try {

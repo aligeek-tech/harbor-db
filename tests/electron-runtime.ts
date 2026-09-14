@@ -1,6 +1,13 @@
 import { expect, type ElectronApplication, type Page } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 
+/** The preload bridge appears before the initial loadFile and renderer bootstrap finish. */
+export async function waitForElectronWorkspace(page: Page) {
+  await page.waitForFunction(() => !!window.harbor)
+  await page.waitForLoadState('load')
+  await expect(page.locator('.statusbar')).toBeVisible()
+}
+
 /** Inspect the running process; BrowserWindow preferences alone do not prove kernel isolation. */
 export async function inspectElectronSandbox(desktop: ElectronApplication, page: Page) {
   const window = await desktop.browserWindow(page)

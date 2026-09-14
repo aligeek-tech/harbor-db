@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { Client } from 'pg'
 import { profileSchema } from '../src/shared/contracts'
-import { inspectElectronSandbox } from './electron-runtime'
+import { inspectElectronSandbox, waitForElectronWorkspace } from './electron-runtime'
 
 test('Timescale hypertables and continuous aggregates remain visible while extension internals stay hidden and user routines are paged', async () => {
   test.skip(process.env.HARBOR_TIMESCALE !== '1', 'Requires the isolated PostgreSQL 17 Timescale fixture.')
@@ -110,7 +110,7 @@ test('Timescale hypertables and continuous aggregates remain visible while exten
     page.on('console', (message) => {
       if (message.type() === 'error') errors.push(message.text())
     })
-    await page.waitForFunction(() => !!window.harbor)
+    await waitForElectronWorkspace(page)
     await page.evaluate(
       async (profiles) => {
         for (const profile of profiles)
@@ -229,9 +229,7 @@ test('Timescale hypertables and continuous aggregates remain visible while exten
     await page.screenshot({ path: '/tmp/harbor-db-e2e/timescale-fixed-explorer.png' })
   } finally {
     if (desktop) {
-      const closed = desktop.waitForEvent('close')
-      await desktop.evaluate(({ app }) => app.exit(0)).catch(() => desktop?.process().kill('SIGTERM'))
-      await closed
+      await desktop.close()
     }
     if (connected) {
       try {

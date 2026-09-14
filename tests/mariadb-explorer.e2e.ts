@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import mariadb, { type Connection } from 'mariadb'
 import { profileSchema } from '../src/shared/contracts'
-import { inspectElectronSandbox } from './electron-runtime'
+import { inspectElectronSandbox, waitForElectronWorkspace } from './electron-runtime'
 
 test('MariaDB without a default database browses catalogs and preserves the server-level profile on reconnect', async () => {
   test.skip(process.env.HARBOR_INTEGRATION !== '1', 'Requires the isolated MariaDB development service.')
@@ -56,7 +56,7 @@ test('MariaDB without a default database browses catalogs and preserves the serv
     const page = await desktop.firstWindow()
     const pageErrors: string[] = []
     page.on('pageerror', (error) => pageErrors.push(error.message))
-    await page.waitForFunction(() => !!window.harbor)
+    await waitForElectronWorkspace(page)
     // Profile setup uses the validated bridge; connecting, browsing, refreshing,
     // opening the settings dialog, and reconnecting below are real UI interactions.
     await page.evaluate(async (profile) => {
@@ -69,7 +69,7 @@ test('MariaDB without a default database browses catalogs and preserves the serv
       await window.harbor.saveWorkspace({ ...state.workspace, tabs: [], activeTabId: null, expanded: [] })
     }, profile)
     await page.reload()
-    await page.waitForFunction(() => !!window.harbor)
+    await waitForElectronWorkspace(page)
     await test.info().attach('electron-sandbox', {
       body: JSON.stringify(await inspectElectronSandbox(desktop, page), null, 2),
       contentType: 'application/json',
@@ -182,9 +182,7 @@ test('MariaDB without a default database browses catalogs and preserves the serv
     await page.screenshot({ path: test.info().outputPath('mariadb-explorer.png') })
   } finally {
     if (desktop) {
-      const closed = desktop.waitForEvent('close')
-      await desktop.evaluate(({ app }) => app.exit(0)).catch(() => desktop?.process().kill('SIGTERM'))
-      await closed
+      await desktop.close()
     }
     if (connection) {
       try {

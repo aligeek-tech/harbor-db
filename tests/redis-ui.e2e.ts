@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { profileSchema } from '../src/shared/contracts'
+import { waitForElectronWorkspace } from './electron-runtime'
 
 test('Redis key UI scans, stages, detects conflicts, edits collections, preserves tabs, and enforces read-only', async () => {
   test.skip(process.env.HARBOR_INTEGRATION !== '1', 'Requires the isolated Redis development service.')
@@ -42,7 +43,7 @@ test('Redis key UI scans, stages, detects conflicts, edits collections, preserve
       timeout: 30000,
     })
     const page = await desktop.firstWindow()
-    await page.waitForFunction(() => !!window.harbor)
+    await waitForElectronWorkspace(page)
     await page.emulateMedia({ colorScheme: 'dark' })
     await desktop.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]!.setSize(1440, 900)

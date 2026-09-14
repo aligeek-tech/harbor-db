@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { Client } from 'pg'
 import { profileSchema } from '../src/shared/contracts'
-import { inspectElectronSandbox } from './electron-runtime'
+import { inspectElectronSandbox, waitForElectronWorkspace } from './electron-runtime'
 
 async function typeSql(page: Page, sql: string) {
   const editor = page.locator('.monaco-editor:visible textarea').first()
@@ -76,7 +76,7 @@ test('blank PostgreSQL profile browses databases and keeps table and saved SQL t
     page.on('console', (message) => {
       if (message.type() === 'error') errors.push(message.text())
     })
-    await page.waitForFunction(() => !!window.harbor)
+    await waitForElectronWorkspace(page)
     // Fixture setup uses the validated bridge. All browsing, query execution,
     // saving, reopening, refreshing, and reconnecting below use actual controls.
     await page.evaluate(async (profile) => {
@@ -263,9 +263,7 @@ test('blank PostgreSQL profile browses databases and keeps table and saved SQL t
     expect(errors).toEqual([])
   } finally {
     if (desktop) {
-      const closed = desktop.waitForEvent('close')
-      await desktop.evaluate(({ app }) => app.exit(0)).catch(() => desktop?.process().kill('SIGTERM'))
-      await closed
+      await desktop.close()
     }
     await Promise.allSettled(fixtures.map(({ client }) => client.end()))
     if (adminConnected) {

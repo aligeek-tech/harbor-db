@@ -6,7 +6,7 @@ import { join, resolve } from 'node:path'
 import { Client } from 'pg'
 import mariadb, { type Connection } from 'mariadb'
 import { profileSchema, type ConnectionProfile } from '../src/shared/contracts'
-import { inspectElectronSandbox } from './electron-runtime'
+import { inspectElectronSandbox, waitForElectronWorkspace } from './electron-runtime'
 
 const root = resolve(import.meta.dirname, '..')
 
@@ -159,7 +159,7 @@ for (const engine of ['postgres', 'mariadb'] as const) {
       page.on('console', (message) => {
         if (message.type() === 'error') consoleErrors.push(message.text())
       })
-      await page.waitForFunction(() => !!window.harbor)
+      await waitForElectronWorkspace(page)
       await page.evaluate(
         async (profiles) => {
           for (const profile of profiles)
@@ -180,7 +180,7 @@ for (const engine of ['postgres', 'mariadb'] as const) {
         [profile, readOnly],
       )
       await page.reload()
-      await page.waitForFunction(() => !!window.harbor)
+      await waitForElectronWorkspace(page)
       await expect(page).toHaveTitle('Harbor DB')
       expect(page.url()).toMatch(/^file:.*\/out\/renderer\/index\.html$/)
       await expect(page.getByText('Harbor DB', { exact: true }).first()).toBeVisible()
@@ -355,9 +355,7 @@ for (const engine of ['postgres', 'mariadb'] as const) {
       expect(consoleErrors).toEqual([])
     } finally {
       if (desktop) {
-        const closed = desktop.waitForEvent('close')
-        await desktop.evaluate(({ app }) => app.exit(0)).catch(() => desktop?.process().kill('SIGTERM'))
-        await closed
+        await desktop.close()
       }
       if (pg) {
         try {

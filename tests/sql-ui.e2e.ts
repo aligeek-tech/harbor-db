@@ -6,6 +6,7 @@ import { join, resolve } from 'node:path'
 import { Client } from 'pg'
 import mariadb, { type Connection } from 'mariadb'
 import { profileSchema, tabSchema, type ConnectionProfile } from '../src/shared/contracts'
+import { waitForElectronWorkspace } from './electron-runtime'
 
 const root = resolve(import.meta.dirname, '..')
 const fixture = `ui_${randomUUID().replaceAll('-', '').slice(0, 16)}`
@@ -174,7 +175,7 @@ test.describe('real SQL editing in Electron', () => {
     page = await desktop.firstWindow()
     pageErrors = []
     page.on('pageerror', (error) => pageErrors.push(error.message))
-    await page.waitForFunction(() => !!window.harbor)
+    await waitForElectronWorkspace(page)
     await expect(page.getByText('Harbor DB', { exact: true }).first()).toBeVisible()
     const drafts = [
       tabSchema.parse({
@@ -214,11 +215,8 @@ test.describe('real SQL editing in Electron', () => {
   })
   test.afterEach(async () => {
     if (desktop) {
-      // Exit the isolated test process even after an assertion leaves staged edits.
-      // This cannot affect the user's ordinary Harbor profile or other E2E processes.
-      const closed = desktop.waitForEvent('close')
-      await desktop.evaluate(({ app }) => app.exit(0)).catch(() => desktop?.process().kill('SIGTERM'))
-      await closed
+      // Let Playwright disconnect the inspector and finish the isolated app lifecycle.
+      await desktop.close()
       desktop = undefined
     }
     if (userData) await rm(userData, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
