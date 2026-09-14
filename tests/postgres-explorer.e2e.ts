@@ -185,9 +185,14 @@ test('empty PostgreSQL explorer explains its database scope and opens another da
     const final = await page.evaluate(() => window.harbor.bootstrap())
     expect(final.profiles.find((item) => item.id === profile.id)?.database).toBe(emptyDatabase)
     expect(final.profiles.find((item) => item.id === target.id)?.database).toBe('harbor')
-    expect(
-      final.workspace.tabs.find((tab) => tab.kind === 'table' && tab.schema === schema)?.connectionId,
-    ).toBe(target.id)
+    // Tab activation and editor state are saved with a debounce. Read the real
+    // persisted workspace until that save completes, including on fast runners.
+    await expect
+      .poll(async () => {
+        const saved = await page.evaluate(() => window.harbor.bootstrap())
+        return saved.workspace.tabs.find((tab) => tab.kind === 'table' && tab.schema === schema)?.connectionId
+      })
+      .toBe(target.id)
     expect(errors).toEqual([])
   } finally {
     if (desktop) {
