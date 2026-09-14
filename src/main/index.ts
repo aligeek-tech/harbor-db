@@ -20,6 +20,7 @@ const runtimeDirectory = fileURLToPath(new URL('.', import.meta.url))
 
 // Test instances are isolated; a packaged application cannot redirect its data through env.
 if (!app.isPackaged && process.env.HARBOR_USER_DATA) app.setPath('userData', process.env.HARBOR_USER_DATA)
+if (process.platform === 'win32') app.setAppUserModelId('dev.harbordb.desktop')
 app.setName('Harbor DB')
 if (!app.requestSingleInstanceLock()) app.quit()
 
