@@ -1,6 +1,6 @@
 # Validation record
 
-Validation date: 2026-09-14. These results describe the local host and generated fixtures below. They do not establish behavior on other operating systems, server versions or network conditions.
+Validation date: 2026-09-14. These results describe the local host, generated fixtures and GitHub release jobs below. They do not establish behavior on every operating-system version, server version or network condition.
 
 ## Host and fixtures
 
@@ -79,4 +79,23 @@ Keyboard tests include actual Monaco typing, execution and save shortcuts, tab c
 
 Linux x64 unpacked packaging was built and launched with isolated application data. The approximately 470 MiB unpacked directory must be kept together; it loaded ASAR assets and connected to all three engines without renderer page errors.
 
-Windows and macOS packaging/signing configuration and CI jobs are supplied, but those platforms were not executed on this host. At the time of this validation record, Linux AppImage/deb targets were configured and only the unpacked Linux artifact had been built and launched. No signed or notarized release is claimed. See [RELEASE.md](RELEASE.md) and each [GitHub release](https://github.com/aligeek-tech/harbor-db/releases) for artifact-specific status.
+Linux AppImage and Debian installers were also built locally. The extracted Debian package contains standard hicolor icons at 16, 24, 32, 48, 64, 128, 256 and 512 pixels; GTK resolved the expected sizes to those installed icon files. Desktop-file validation passed, and the launcher identity matches the packaged window's `WM_CLASS`. The packaged window exposed its native icon. Installer/removal script syntax and the scoped AppArmor policy passed validation; no system installation was performed by these checks.
+
+## Published v0.1.0
+
+The [release workflow](https://github.com/aligeek-tech/harbor-db/actions/runs/34859725745) passed at commit `419810045c1fa2076ce2f16ea8942d255b3809f7` and published [Harbor DB v0.1.0](https://github.com/aligeek-tech/harbor-db/releases/tag/v0.1.0).
+
+| Remote check                                                            | Result                                      |
+| ----------------------------------------------------------------------- | ------------------------------------------- |
+| ESLint, strict TypeScript and production build                          | Passed                                      |
+| Unit suite                                                              | 75 passed; 58 opt-in cases skipped          |
+| Unit suite with real database integration enabled                       | 132 passed; one opt-in benchmark skipped    |
+| Electron UI suite                                                       | 12 passed; packaged-only case skipped       |
+| Separate packaged Linux smoke test                                      | 1 passed                                    |
+| Windows and macOS unpacked packaging                                    | Passed                                      |
+| Native Linux x64, Windows x64, macOS Intel and Apple Silicon installers | All four build jobs passed                  |
+| Complete release publication                                            | Seven installers and `SHA256SUMS` published |
+
+Every installer URL returned HTTP 200 without authentication and the expected content length. The downloaded `SHA256SUMS` matched GitHub's recorded digest, and every installer checksum in that file matched GitHub's digest for the uploaded asset. The public repository and all release assets were also verified in Chrome.
+
+Windows and macOS installers were built on their respective native GitHub runners; interactive installation, database workflows and OS-keychain behavior on those systems remain unverified. Windows installers are unsigned, and macOS builds use ad-hoc signatures without Developer ID signing or notarization. See [RELEASE.md](RELEASE.md) for installation and signing details. Released binary assets and the published tag remain unchanged when this evidence record is updated.
