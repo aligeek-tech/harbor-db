@@ -1,0 +1,47 @@
+# Capabilities and limits
+
+| Capability         | PostgreSQL                                                               | MariaDB                                                            | Redis                                                                              |
+| ------------------ | ------------------------------------------------------------------------ | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| Tested engine      | 17 (Docker)                                                              | 11.4 (Docker)                                                      | 8 standalone (Docker)                                                              |
+| Authentication     | username/password, TLS client cert, SSH                                  | username/password, TLS client cert, SSH                            | password with optional ACL user, TLS, SSH                                          |
+| Explorer           | databases, schemas, tables/views/materialized views, functions/sequences | databases, tables/views, routines/triggers                         | incremental binary-safe SCAN, type, TTL                                            |
+| Structure          | columns, PK, constraints, indexes; structural DDL summary                | columns, PK, constraints, indexes, SHOW CREATE                     | type-appropriate bounded value inspection                                          |
+| Execution          | SQL, multiple sets, notices, error detail, EXPLAIN                       | SQL, multiple sets, warnings, error detail, EXPLAIN                | supported standalone command allowlist                                             |
+| Transactions       | dedicated tab session; failed/open/idle server state                     | dedicated tab session; engine implicit commits respected           | atomic supported mutations; no transaction-console session state                   |
+| Cancellation       | server cancellation request and confirmed outcome                        | separate session KILL QUERY; confirmed outcome                     | continued scanning can stop; dispatched commands are not falsely labeled cancelled |
+| Edit data          | base tables with primary key                                             | InnoDB base tables with primary key                                | strings, hashes, lists, sets, sorted sets, streams                                 |
+| Concurrency checks | locked original-row comparison, affected rows, transactional batch       | locked original-row comparison, affected rows, transactional batch | string compare-and-set, atomic create-only, rename collision prevention            |
+| Export             | selected rows / loaded results: CSV or ordered JSON                      | same                                                               | key/value copy; console result export                                              |
+| CSV import         | preview/map/validate/transactional inserts                               | preview/map/validate/transactional inserts                         | not applicable                                                                     |
+
+## Bounds
+
+- Default table page: 200 rows; configurable 25–1,000. Offset-based pagination uses stable primary-key ordering where possible. Tables without a reliable ordering key warn about unstable page contents. Keyset pagination is not implemented.
+- Arbitrary SQL: up to 1,000 retained rows by default (IPC maximum 10,000), with an 8 MiB retained result budget and 100 statement/result-set cap. The original query runs unchanged and rows beyond the display budget are drained. This is a display/retention limit, not a server execution limit. A single huge field may still require driver allocation before it can be rejected.
+- SQL: at most 32 retained sessions per connection, including PostgreSQL metadata sessions for expanded databases; query and connection timeouts are configurable. Tab sessions close with their tabs. Disconnecting or exiting releases all sessions. There is no automatic idle-session eviction. Transactions retain their dedicated session until explicitly completed or disconnected.
+- PostgreSQL server browsing: a blank Database lists accessible databases under one saved profile, loading each database's schemas and objects on expansion. Each query/table tab keeps its chosen database, including edits, transactions, cancellation, saved queries and history. Initial discovery uses an accessible maintenance database; if none is accessible, supply a Database explicitly. A database-specific error does not hide other databases.
+- Sidebar: first 300 objects per schema displayed; filtering finds additional already-loaded objects. Metadata is cached until refresh; giant catalogs still depend on catalog-query cost.
+- Grid: row virtualization, bounded fetch, row checkboxes, filtered loaded-row selection, resizable/reorderable/hideable/pinnable columns, rectangular cell selection and keyboard copying. Reviewed table deletion is limited to 200 selected rows per transaction and requires a writable connection and primary key. Horizontal column virtualization and persistent column order/pinning are not implemented; column widths/visibility are persisted.
+- Table SQL editor: displays an executable form of the page's parameterized SELECT, including filter values, sort order, limit and offset. Running edited SQL uses the tab's existing query session and displays results without enabling table-row mutations on arbitrary projections or joins. Return to the table after completing any open transaction to resume row editing.
+- Redis: count defaults to 200; results are deduplicated. Browser retains at most 10,000 discovered keys. Default collection page is 100 entries, maximum 500; string preview is 1 MiB and individual collection-cell previews are capped. Clipped values are labeled and cannot replace the underlying full value.
+- Redis console: 4 MiB response budget; bounded supported collection reads. Arbitrary EVAL, modules, KEYS, blocking commands, subscriptions and session-switching commands are unavailable. Redis 7+ inspection needs `EVAL_RO`; Redis 6 inspection uses `EVAL`. INFO permission is required to identify unsupported cluster/Sentinel topology. Use credentials permitting the supported operations.
+- CSV import: up to 2 MiB and 200 rows per batch; insert-only with explicit column mapping, delimiter/header settings, validation and source-row errors. Larger/bulk imports are outside this release.
+- Loaded-result export: up to 10,000 rows / 32 MiB, written in a background worker. Full query/table streaming exports and export cancellation/progress UI are outside this release.
+- History retains at most 5,000 entries, displays the most recent 500 and prunes by configured age. Queries can contain secrets even when they are not authentication commands; use private mode or disable history accordingly.
+
+## Value fidelity and file formats
+
+Decimals and large integers are strings rather than JavaScript numbers. SQL JSON is transported as raw text. Dates/times are represented without implicit client timezone conversion; server-provided timezone information is preserved. Duplicate columns are separate indexed fields. Binary uses tagged base64 and can be inspected in hex.
+
+JSON exports use `{ columns, rows }` to preserve duplicate names and exact numeric strings. CSV is necessarily less typed: NULL uses `\N`, a literal backslash-N is escaped, and binary uses a base64 representation. Spreadsheet-safe CSV prefixes formula-like text to prevent spreadsheet evaluation, intentionally changing that representation. Loaded exports include exactly the explicitly chosen scope and never silently fetch an entire table.
+
+## Operations intentionally outside the release
+
+- Redis Cluster/Sentinel, pub/sub, blocking operations, modules and unrestricted scripting.
+- SQL object/schema design migrations, database backup/restore and native administrative tools.
+- Editing arbitrary joined/aggregated results or tables identifiable only by a unique key rather than a primary key.
+- Guaranteed round-trip DDL generation for every PostgreSQL object; use `pg_dump` for authoritative definitions.
+- Automatic statement retries, restoring transactions, undoing already committed edits or replaying pending changes.
+- Automatic updates and signed/notarized releases without operator-supplied signing credentials.
+
+These limits are surfaced through disabled actions, bounded scopes, explanatory UI, or explicit errors; they are not simulated with successful-looking responses.

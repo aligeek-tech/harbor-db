@@ -1,0 +1,43 @@
+name: harbor-db
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: harbor
+      POSTGRES_USER: harbor
+      POSTGRES_PASSWORD: harbor_test
+    ports: ["127.0.0.1:15432:5432"]
+    volumes: ["harbor-postgres:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U harbor -d harbor"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  mariadb:
+    image: mariadb:11.4
+    environment:
+      MARIADB_DATABASE: harbor
+      MARIADB_USER: harbor
+      MARIADB_PASSWORD: harbor_test
+      MARIADB_ROOT_PASSWORD: harbor_root
+    ports: ["127.0.0.1:13306:3306"]
+    volumes: ["harbor-mariadb:/var/lib/mysql"]
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+  redis:
+    image: redis:8-alpine
+    command: ["redis-server", "--requirepass", "harbor_test"]
+    ports: ["127.0.0.1:16379:6379"]
+    volumes: ["harbor-redis:/data"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "harbor_test", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+volumes:
+  harbor-postgres:
+  harbor-mariadb:
+  harbor-redis:

@@ -1,0 +1,43 @@
+appId: dev.harbordb.desktop
+productName: Harbor DB
+directories:
+  output: release
+  buildResources: resources
+files:
+  - out/**
+  - resources/icon.png
+  - resources/icon.ico
+  - package.json
+extraMetadata:
+  desktopName: dev.harbordb.desktop.desktop
+asar: true
+npmRebuild: false
+artifactName: Harbor-DB-${version}-${os}-${arch}.${ext}
+linux:
+  category: Development
+  target: [AppImage, deb]
+  # ICNS expands into the standard hicolor sizes; a single 1024 PNG is not indexed by many desktops.
+  icon: resources/icon.icns
+  executableName: harbor-db
+  syncDesktopName: true
+  synopsis: Local PostgreSQL, MariaDB and Redis workspace
+  maintainer: Harbor DB contributors
+mac:
+  category: public.app-category.developer-tools
+  minimumSystemVersion: '13.0'
+  icon: resources/icon.icns
+  target: [dmg, zip]
+  # Ad-hoc signing keeps Apple Silicon builds runnable without a signing certificate.
+  # These public builds are not Developer ID signed or notarized.
+  identity: '-'
+  hardenedRuntime: true
+  entitlements: resources/entitlements.mac.plist
+  entitlementsInherit: resources/entitlements.mac.plist
+  notarize: false
+win:
+  target: [nsis]
+  icon: resources/icon.ico
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: false

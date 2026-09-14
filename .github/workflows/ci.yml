@@ -1,0 +1,66 @@
+name: Verify Harbor DB
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with: { node-version: '24', cache: npm }
+      - name: Install Linux desktop dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb apparmor-utils libgtk-3-0t64 libnss3 libgbm1 libasound2t64 libsecret-1-0
+      - run: npm ci
+      - name: Enable the per-executable Chromium sandbox policy
+        run: npm run setup:linux
+      - run: npm run lint && npm run typecheck && npm test && npm run build
+      - run: npm run db:up
+      - run: npm run db:seed
+      - run: npm run test:integration
+      - run: xvfb-run --auto-servernum npx playwright test
+        env: { HARBOR_INTEGRATION: '1' }
+      - run: npm run package
+      - run: xvfb-run --auto-servernum npx playwright test tests/package.e2e.ts
+        env: { HARBOR_PACKAGE: '1' }
+      - name: Preserve test traces and screenshots
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: linux-test-evidence
+          path: |
+            test-results
+            /tmp/harbor-db-e2e
+          if-no-files-found: ignore
+          retention-days: 7
+      - run: npm run db:down
+        if: always()
+  package:
+    strategy:
+      fail-fast: false
+      matrix: { os: [windows-2025, macos-15] }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with: { node-version: '24', cache: npm }
+      - run: npm ci
+      - run: npm run build
+      - run: npx electron-builder --dir --publish never
+        env: { CSC_IDENTITY_AUTO_DISCOVERY: 'false' }
