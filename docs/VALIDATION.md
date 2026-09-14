@@ -15,7 +15,7 @@ Validation date: 2026-09-14. These results describe the local host, generated fi
 | Check                                                | Result                                        |
 | ---------------------------------------------------- | --------------------------------------------- |
 | Strict TypeScript, ESLint and Prettier               | Passed                                        |
-| Unit and real-engine integration suite               | 132 passed; one opt-in benchmark skipped      |
+| Unit and real-engine integration suite               | 138 passed; one opt-in benchmark skipped      |
 | Dependency audit, including development dependencies | 0 reported vulnerabilities at validation time |
 | Electron desktop acceptance                          | 2 passed                                      |
 | Electron SQL UI acceptance                           | 3 passed                                      |
@@ -24,6 +24,7 @@ Validation date: 2026-09-14. These results describe the local host, generated fi
 | Electron table SQL and multi-row deletion            | 2 passed                                      |
 | Electron explicit PostgreSQL database chooser        | 1 passed                                      |
 | Electron PostgreSQL server explorer                  | 1 passed                                      |
+| Electron TimescaleDB explorer and catalog paging     | 1 passed                                      |
 | Electron saved-query persistence and theme contrast  | 1 passed                                      |
 | Packaged Linux acceptance and OS-keyring restart     | Passed                                        |
 
@@ -80,6 +81,14 @@ Keyboard tests include actual Monaco typing, execution and save shortcuts, tab c
 Linux x64 unpacked packaging was built and launched with isolated application data. The approximately 470 MiB unpacked directory must be kept together; it loaded ASAR assets and connected to all three engines without renderer page errors.
 
 Linux AppImage and Debian installers were also built locally. The extracted Debian package contains standard hicolor icons at 16, 24, 32, 48, 64, 128, 256 and 512 pixels; GTK resolved the expected sizes to those installed icon files. Desktop-file validation passed, and the launcher identity matches the packaged window's `WM_CLASS`. The packaged window exposed its native icon. Installer/removal script syntax and the scoped AppArmor policy passed validation; no system installation was performed by these checks.
+
+## TimescaleDB regression verification in 0.1.1
+
+Six new backend regressions run against ordinary PostgreSQL 17 and a dedicated TimescaleDB 2.27.1 / PostgreSQL 17.10 fixture. They verify hypertable and continuous-aggregate reads, custom-schema chunk filtering, SELECT-only access, preservation of user routines with extension-like names and dependencies, unrelated extension tables, and filtering 10,001 extension helper functions before the metadata result budget. The complete integration-enabled suite passed 138 tests with only the opt-in benchmark skipped.
+
+The real Electron flow uses two generated databases with identically named hypertables and continuous aggregates but distinct rows. Both blank-server and explicitly configured database profiles preserve their targets. A schema containing 305 user routines proves that tables appear before routines and **Show more** reveals objects beyond the first 300; extension helpers and internal schemas are absent. The existing PostgreSQL server, configured PostgreSQL and MariaDB explorer tests also passed. The final Timescale flow was repeated against the optional Compose fixture and checked the visible version against the main process's version. Page identity, renderer console, error-overlay and actual sandbox checks passed at 1440×900; the new paging controls were not separately reviewed at compact widths.
+
+The Timescale fixture uses loopback-only port 15433, a digest-pinned official image, temporary storage and generated test databases. No user database was inspected or changed. Screenshot evidence is generated outside the repository. This records local verification; the release workflow additionally enables the Timescale integration and Electron tests before publishing installers.
 
 ## Published v0.1.0
 

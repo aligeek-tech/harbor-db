@@ -26,6 +26,7 @@ interface Runtime {
 }
 interface AppState {
   loaded: boolean
+  version: string
   profiles: ConnectionProfile[]
   workspace: Workspace
   savedQueries: SavedQuery[]
@@ -80,6 +81,7 @@ function queueSave() {
 }
 export const useApp = create<AppState>((set, get) => ({
   loaded: false,
+  version: '',
   profiles: [],
   workspace: previewBootstrap.workspace,
   savedQueries: [],
@@ -95,6 +97,7 @@ export const useApp = create<AppState>((set, get) => ({
     const b = await api.bootstrap()
     set({
       loaded: true,
+      version: b.version,
       profiles: b.profiles,
       workspace: b.workspace,
       savedQueries: b.savedQueries,

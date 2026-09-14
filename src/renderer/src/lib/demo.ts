@@ -110,6 +110,6 @@ export const previewBootstrap: Bootstrap = {
     backend: 'browser preview',
     reason: 'Secure storage is available in the desktop application.',
   },
-  version: '0.1.0',
+  version: 'preview',
   platform: 'browser',
 }

@@ -1,4 +1,13 @@
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent,
+  type ReactNode,
+} from 'react'
 import {
   ArrowRight,
   Braces,
@@ -119,6 +128,50 @@ function ObjectIcon({ object }: { object: ObjectInfo }) {
   if (object.kind === 'trigger') return <Zap />
   if (object.kind === 'view' || object.kind === 'materialized view') return <Layers />
   return <Table2 />
+}
+
+const OBJECT_PAGE_SIZE = 300
+
+function PagedObjectList({
+  members,
+  label,
+  children,
+}: {
+  members: ObjectInfo[]
+  label: string
+  children: (object: ObjectInfo, index: number) => ReactNode
+}) {
+  const [limit, setLimit] = useState(OBJECT_PAGE_SIZE)
+  const ordered = useMemo(() => {
+    const tables: ObjectInfo[] = []
+    const other: ObjectInfo[] = []
+    for (const object of members) (relational(object) ? tables : other).push(object)
+    return [...tables, ...other]
+  }, [members])
+  const shown = Math.min(limit, ordered.length)
+  const next = Math.min(OBJECT_PAGE_SIZE, ordered.length - shown)
+  return (
+    <>
+      {ordered.slice(0, shown).map(children)}
+      {ordered.length > OBJECT_PAGE_SIZE && (
+        <div className="py-1">
+          <p className="group-subtitle" role="status">
+            Showing {shown.toLocaleString()} of {ordered.length.toLocaleString()} objects.
+          </p>
+          {next > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label={`Show ${next} more objects in ${label}`}
+              onClick={() => setLimit((current) => current + OBJECT_PAGE_SIZE)}
+            >
+              Show {next.toLocaleString()} more
+            </Button>
+          )}
+        </div>
+      )}
+    </>
+  )
 }
 
 export function Sidebar({
@@ -502,10 +555,25 @@ export function Sidebar({
       )
     }
   }
-  function renderObjectRows(profile: ConnectionProfile, members: ObjectInfo[], database?: string) {
+  function renderObjectRows(
+    profile: ConnectionProfile,
+    members: ObjectInfo[],
+    schema: string,
+    database?: string,
+  ) {
     return (
-      <>
-        {members.slice(0, 300).map((object, index) => {
+      <PagedObjectList
+        key={JSON.stringify([
+          profile.id,
+          database || profile.database,
+          schema,
+          filter,
+          catalogGeneration.current[profile.id] || 0,
+        ])}
+        members={members}
+        label={[database || profile.database, schema].filter(Boolean).join('.')}
+      >
+        {(object, index) => {
           const name = qualifiedName(
             object.schema,
             object.name,
@@ -598,8 +666,8 @@ export function Sidebar({
               </DropdownMenu>
             </div>
           )
-        })}
-      </>
+        }}
+      </PagedObjectList>
     )
   }
   function renderPostgresDatabases(profile: ConnectionProfile, databases: string[], filtered: ObjectInfo[]) {
@@ -689,15 +757,7 @@ export function Sidebar({
                       <small>{objects.length}</small>
                     </button>
                     {schemaOpen && (
-                      <div className="ml-3">
-                        {renderObjectRows(profile, objects, database)}
-                        {objects.length > 300 && (
-                          <p className="group-subtitle">
-                            Showing 300 of {objects.length.toLocaleString()} objects. Filter above to narrow
-                            this schema.
-                          </p>
-                        )}
-                      </div>
+                      <div className="ml-3">{renderObjectRows(profile, objects, schema, database)}</div>
                     )}
                   </div>
                 )
@@ -1122,13 +1182,7 @@ export function Sidebar({
                                                   <RefreshCw />
                                                 </IconButton>
                                               )}
-                                              {renderObjectRows(profile, members)}
-                                              {members.length > 300 && (
-                                                <p className="group-subtitle">
-                                                  Showing 300 of {members.length.toLocaleString()} objects.
-                                                  Filter above to narrow this schema.
-                                                </p>
-                                              )}
+                                              {renderObjectRows(profile, members, schema)}
                                             </div>
                                           )}
                                         </div>

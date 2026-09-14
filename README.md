@@ -8,16 +8,16 @@ A local Electron workspace for PostgreSQL, MariaDB and standalone Redis. Connect
 
 ## Downloads
 
-Install Harbor DB without Node.js, npm, or a source checkout. Download version **0.1.0** for your computer:
+Install Harbor DB without Node.js, npm, or a source checkout. Download version **0.1.1** for your computer:
 
 | Platform                   | Downloads                                                                                                                                                                                                                                           |
 | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Linux (64-bit Intel/AMD)   | [Debian / Ubuntu (.deb)](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.0/Harbor-DB-0.1.0-linux-amd64.deb) · [AppImage](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.0/Harbor-DB-0.1.0-linux-x86_64.AppImage) |
-| Windows (64-bit Intel/AMD) | [Setup (.exe)](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.0/Harbor-DB-0.1.0-win-x64.exe)                                                                                                                                      |
-| macOS 13+ (Apple Silicon)  | [Installer (.dmg)](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.0/Harbor-DB-0.1.0-mac-arm64.dmg) · [ZIP](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.0/Harbor-DB-0.1.0-mac-arm64.zip)                      |
-| macOS 13+ (Intel)          | [Installer (.dmg)](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.0/Harbor-DB-0.1.0-mac-x64.dmg) · [ZIP](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.0/Harbor-DB-0.1.0-mac-x64.zip)                          |
+| Linux (64-bit Intel/AMD)   | [Debian / Ubuntu (.deb)](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.1/Harbor-DB-0.1.1-linux-amd64.deb) · [AppImage](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.1/Harbor-DB-0.1.1-linux-x86_64.AppImage) |
+| Windows (64-bit Intel/AMD) | [Setup (.exe)](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.1/Harbor-DB-0.1.1-win-x64.exe)                                                                                                                                      |
+| macOS 13+ (Apple Silicon)  | [Installer (.dmg)](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.1/Harbor-DB-0.1.1-mac-arm64.dmg) · [ZIP](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.1/Harbor-DB-0.1.1-mac-arm64.zip)                      |
+| macOS 13+ (Intel)          | [Installer (.dmg)](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.1/Harbor-DB-0.1.1-mac-x64.dmg) · [ZIP](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.1/Harbor-DB-0.1.1-mac-x64.zip)                          |
 
-[All releases and release notes](https://github.com/aligeek-tech/harbor-db/releases/latest) · [SHA-256 checksums](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.0/SHA256SUMS)
+[All releases and release notes](https://github.com/aligeek-tech/harbor-db/releases/latest) · [SHA-256 checksums](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.1/SHA256SUMS)
 
 Windows builds are unsigned; macOS builds use an ad-hoc signature and are not notarized. Your operating system may require an explicit installation approval. See [installation and verification instructions](docs/RELEASE.md), including the recommended `.deb` installation on Ubuntu.
 
@@ -67,6 +67,16 @@ npm run db:seed
 
 The seed creates 12 customers and 100,000 orders in each SQL engine, plus 100,000 Redis benchmark keys and examples of every supported value type. Re-running the seed preserves SQL rows and refreshes its named Redis fixtures. Use `npm run db:down` to stop services; all three named data volumes remain. Redis uses its normal RDB snapshot persistence, so an abrupt container failure can lose changes since its last snapshot. Delete volumes only when you intend to remove those test databases.
 
+TimescaleDB regression tests use an optional, disposable PostgreSQL 17 service on `127.0.0.1:15433`, with the same `harbor` / `harbor_test` development credentials. After starting the ordinary development services, enable it with:
+
+```bash
+docker compose --profile timescale up -d --wait timescale
+HARBOR_INTEGRATION=1 HARBOR_TIMESCALE=1 npm test
+HARBOR_INTEGRATION=1 HARBOR_TIMESCALE=1 npm run test:e2e
+```
+
+The Timescale image is pinned to version 2.27.1 and its digest. Its storage is temporary and is discarded when the container stops. Tests create and clean up their own databases. CI includes this profile; normal `npm run db:up` still starts only the three core services.
+
 ## Daily workflow
 
 1. Choose **Add connection**, select an engine, and fill in fields or parse a connection URL. **Test connection**, **Save**, and **Save and connect** are separate operations. Saving works while a server is offline.
@@ -77,6 +87,8 @@ The seed creates 12 customers and 100,000 orders in each SQL engine, plus 100,00
 6. Use **Save query** or Cmd/Ctrl+S in a query or table editor to save the displayed SQL to **Saved queries**. Opening a saved query restores its text and PostgreSQL database target without executing it; saving from a table keeps the table tab's name. History also retains the PostgreSQL database target. You can also export selected rows/loaded results. Connection imports show a preview and assign new IDs instead of overwriting existing profiles.
 
 Read-only is initially enabled, including newly designated production profiles. Change it deliberately in the connection dialog to enable edits. Database read-only permissions are still essential: the application safeguard prevents accidental writes and is not a security boundary against hostile databases or privileged stored routines.
+
+PostgreSQL discovery includes TimescaleDB hypertables and continuous aggregates. Extension-owned helper routines and internal Timescale schemas, chunks and materialization tables are omitted from the explorer; your own routines remain visible. Tables and views appear before other objects. Large schemas initially show 300 objects and provide **Show more** to reveal the rest. Filtering searches all loaded objects, including those beyond the first page.
 
 ### Keyboard shortcuts
 

@@ -46,6 +46,7 @@ export function App() {
 }
 function Workbench() {
   const loaded = useApp((s) => s.loaded)
+  const version = useApp((s) => s.version)
   const profiles = useApp((s) => s.profiles)
   const workspace = useApp((s) => s.workspace)
   const statuses = useApp((s) => s.statuses)
@@ -625,7 +626,7 @@ function Workbench() {
       <footer className="statusbar">
         <span className="status-item">
           <Anchor />
-          Harbor DB <span className="muted">0.1.0</span>
+          Harbor DB <span className="muted">{version}</span>
         </span>
         {workspace.settings.privateSession && (
           <span className="status-item warning">

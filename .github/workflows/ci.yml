@@ -29,11 +29,12 @@ jobs:
       - name: Enable the per-executable Chromium sandbox policy
         run: npm run setup:linux
       - run: npm run lint && npm run typecheck && npm test && npm run build
-      - run: npm run db:up
+      - run: docker compose --profile timescale up -d --wait
       - run: npm run db:seed
       - run: npm run test:integration
+        env: { HARBOR_TIMESCALE: '1' }
       - run: xvfb-run --auto-servernum npx playwright test
-        env: { HARBOR_INTEGRATION: '1' }
+        env: { HARBOR_INTEGRATION: '1', HARBOR_TIMESCALE: '1' }
       - run: npm run package
       - run: xvfb-run --auto-servernum npx playwright test tests/package.e2e.ts
         env: { HARBOR_PACKAGE: '1' }
@@ -47,7 +48,7 @@ jobs:
             /tmp/harbor-db-e2e
           if-no-files-found: ignore
           retention-days: 7
-      - run: npm run db:down
+      - run: docker compose --profile timescale down
         if: always()
   package:
     strategy:

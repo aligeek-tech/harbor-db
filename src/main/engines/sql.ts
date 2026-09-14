@@ -811,9 +811,67 @@ export class SqlService {
     const { profile } = connection
     if (profile.engine === 'postgres') {
       const database = this.database(connection, input.database)
+      // Consult stable Timescale views only when the installed extension owns them and
+      // the caller can read them. Ordinary PostgreSQL must not parse missing relations.
+      const timescaleViews = await this.metadata(
+        input.connectionId,
+        `SELECT c.relname AS name
+         FROM pg_catalog.pg_extension e
+         JOIN pg_catalog.pg_depend d ON d.refclassid='pg_catalog.pg_extension'::regclass
+           AND d.refobjid=e.oid AND d.deptype='e' AND d.classid='pg_catalog.pg_class'::regclass
+         JOIN pg_catalog.pg_class c ON c.oid=d.objid
+         JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+         WHERE e.extname='timescaledb' AND n.nspname='timescaledb_information'
+           AND c.relname IN ('chunks','continuous_aggregates')
+           AND pg_catalog.has_schema_privilege(n.oid,'USAGE')
+           AND pg_catalog.has_table_privilege(c.oid,'SELECT')`,
+        [],
+        database,
+      )
+      const available = new Set(timescaleViews.map((row) => text(row.name)))
+      const timescaleRelations = [
+        available.has('chunks')
+          ? `AND NOT EXISTS (SELECT 1 FROM timescaledb_information.chunks chunk
+              WHERE chunk.chunk_schema=n.nspname AND chunk.chunk_name=c.relname)`
+          : '',
+        available.has('continuous_aggregates')
+          ? `AND NOT EXISTS (SELECT 1 FROM timescaledb_information.continuous_aggregates aggregate
+              WHERE aggregate.materialization_hypertable_schema=n.nspname
+                AND aggregate.materialization_hypertable_name=c.relname)`
+          : '',
+      ].join('\n')
       const rows = await this.metadata(
         input.connectionId,
-        `SELECT n.nspname AS schema,c.relname AS name,CASE c.relkind WHEN 'v' THEN 'view' WHEN 'm' THEN 'materialized view' WHEN 'S' THEN 'sequence' ELSE 'table' END AS kind, c.reltuples::bigint::text AS estimate FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.relkind IN ('r','p','v','m','S','f') AND n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname NOT LIKE 'pg_toast%' AND ($1::text IS NULL OR n.nspname=$1) UNION ALL SELECT n.nspname,p.proname,'function',NULL FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname NOT IN ('pg_catalog','information_schema') AND ($1::text IS NULL OR n.nspname=$1) ORDER BY schema,name`,
+        `WITH extension_members AS (
+           SELECT d.classid,d.objid,e.extname
+           FROM pg_catalog.pg_depend d
+           JOIN pg_catalog.pg_extension e ON d.refclassid='pg_catalog.pg_extension'::regclass
+             AND d.refobjid=e.oid
+           WHERE d.deptype='e' AND d.objsubid=0
+         ), user_schemas AS (
+           SELECT n.oid,n.nspname FROM pg_catalog.pg_namespace n
+           WHERE n.nspname <> 'information_schema' AND n.nspname !~ '^pg_'
+             AND ($1::text IS NULL OR n.nspname=$1)
+             AND NOT EXISTS (SELECT 1 FROM extension_members member
+               WHERE member.classid='pg_catalog.pg_namespace'::regclass
+                 AND member.objid=n.oid AND member.extname='timescaledb')
+         )
+         SELECT n.nspname AS schema,c.relname AS name,
+           CASE c.relkind WHEN 'v' THEN 'view' WHEN 'm' THEN 'materialized view'
+             WHEN 'S' THEN 'sequence' ELSE 'table' END AS kind,
+           c.reltuples::bigint::text AS estimate
+         FROM pg_catalog.pg_class c JOIN user_schemas n ON n.oid=c.relnamespace
+         WHERE c.relkind IN ('r','p','v','m','S','f')
+           AND NOT EXISTS (SELECT 1 FROM extension_members member
+             WHERE member.classid='pg_catalog.pg_class'::regclass AND member.objid=c.oid
+               AND member.extname='timescaledb')
+           ${timescaleRelations}
+         UNION ALL
+         SELECT n.nspname,p.proname,'function',NULL
+         FROM pg_catalog.pg_proc p JOIN user_schemas n ON n.oid=p.pronamespace
+         WHERE NOT EXISTS (SELECT 1 FROM extension_members member
+           WHERE member.classid='pg_catalog.pg_proc'::regclass AND member.objid=p.oid)
+         ORDER BY schema,name`,
         [input.schema || null],
         database,
       )
