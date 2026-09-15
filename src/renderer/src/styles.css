@@ -950,6 +950,120 @@ button[data-variant='default'] kbd {
 .column-resizer:hover {
   background: var(--accent);
 }
+.column-sort-actions {
+  display: inline-flex;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.column-sort-actions button {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 24px;
+  border-radius: 4px;
+  color: var(--muted);
+}
+.column-sort-actions button:hover,
+.column-sort-actions button[aria-pressed='true'] {
+  color: var(--accent);
+  background: var(--panel);
+}
+.column-sort-actions button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.column-sort-actions button:disabled {
+  opacity: 0.4;
+}
+.column-sort-actions svg {
+  width: 12px;
+  height: 12px;
+}
+.mongo-browser {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.mongo-target-bar,
+.mongo-query-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.mongo-target-bar > svg {
+  width: 18px;
+}
+.mongo-target-bar label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.mongo-target-bar input {
+  width: 190px;
+}
+.mongo-content {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.mongo-collections {
+  width: 200px;
+  flex-shrink: 0;
+  overflow: auto;
+  padding: 8px;
+  border-right: 1px solid var(--line);
+}
+.mongo-collections > input {
+  margin-bottom: 8px;
+}
+.mongo-collections .object-row.active {
+  background: var(--panel);
+  color: var(--accent);
+}
+.mongo-workspace {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+.mongo-query {
+  min-height: 100px;
+  height: 140px;
+  resize: vertical;
+  padding: 12px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+.mongo-document-dialog {
+  max-width: 850px;
+}
+.mongo-document-dialog textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  max-height: 55vh;
+}
+.engine-icon.mongodb {
+  color: #36a568;
+}
+@media (max-width: 1100px) {
+  .mongo-collections {
+    width: 150px;
+  }
+  .mongo-target-bar input {
+    width: 145px;
+  }
+}
 .results-footer {
   display: flex;
   flex-wrap: wrap;
@@ -1106,6 +1220,7 @@ button[data-variant='default'] kbd {
   height: 37px;
 }
 .engine-list {
+  flex-wrap: wrap;
   border-top: 1px solid var(--line);
   padding-top: 22px;
   display: flex;

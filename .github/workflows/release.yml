@@ -116,7 +116,7 @@ jobs:
           }
           await writeFile('artifacts/SHA256SUMS', lines.join('\n') + '\n');
           const docs = `https://github.com/${process.env.GH_REPO}/blob/${process.env.RELEASE_TAG}/docs/RELEASE.md`;
-          await writeFile('release-notes.md', `Harbor DB ${version}: a local desktop workspace for PostgreSQL, MariaDB, and Redis.\n\nDownload the installer matching your operating system and architecture from Assets below. macOS includes separate Intel (x64) and Apple Silicon (arm64) builds and requires macOS 13 or later. SHA256SUMS covers all seven installers.\n\nThese builds have no verified publisher certificate: Windows is unsigned, and macOS uses an ad-hoc signature without Apple notarization. Operating systems may show warnings or block installation according to local policy. Read the [installation and verification instructions](${docs}) before installing.\n\n`);
+          await writeFile('release-notes.md', `Harbor DB ${version}: a local desktop workspace for PostgreSQL, MariaDB, MongoDB, and Redis.\n\nDownload the installer matching your operating system and architecture from Assets below. macOS includes separate Intel (x64) and Apple Silicon (arm64) builds and requires macOS 13 or later. SHA256SUMS covers all seven installers.\n\nThese builds have no verified publisher certificate: Windows is unsigned, and macOS uses an ad-hoc signature without Apple notarization. Operating systems may show warnings or block installation according to local policy. Read the [installation and verification instructions](${docs}) before installing.\n\n`);
           NODE
       - name: Add generated change notes
         run: gh api --method POST "repos/$GH_REPO/releases/generate-notes" -f "tag_name=$RELEASE_TAG" --jq .body >> release-notes.md

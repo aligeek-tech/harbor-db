@@ -33,6 +33,7 @@ import { Sidebar } from './components/Sidebar'
 import { Library } from './components/Library'
 import { CommandPalette } from './components/CommandPalette'
 import { TableBrowser } from './components/TableBrowser'
+import { MongoBrowser } from './components/MongoBrowser'
 import { RedisBrowser } from './components/RedisBrowser'
 const QueryEditor = lazy(() =>
   import('./components/QueryEditor').then((module) => ({ default: module.QueryEditor })),
@@ -148,6 +149,10 @@ function Workbench() {
       useApp.getState().setStatus(profile.id, status)
       if (status.state !== 'connected') throw new Error(status.error || 'Connection failed')
       toast.success(`Connected to ${profile.name}`)
+      if (profile.engine === 'mongodb') {
+        openMongo(profile)
+        return
+      }
       if (
         profile.engine === 'redis' &&
         !useApp.getState().workspace.tabs.some((t) => t.connectionId === profile.id && t.kind === 'redis')
@@ -184,6 +189,23 @@ function Workbench() {
       setConnectionDialog({})
       return
     }
+    if (target.engine === 'mongodb') {
+      useApp.getState().openTab({
+        connectionId: target.id,
+        kind: 'mongo',
+        title: 'MongoDB query',
+        sql: '{}',
+        database:
+          database ||
+          (activeTab?.connectionId === target.id ? activeTab.database : undefined) ||
+          target.database ||
+          undefined,
+        table: activeTab?.connectionId === target.id ? activeTab.table : undefined,
+        mongoMode: 'find',
+      })
+      useApp.getState().setSection('connections')
+      return
+    }
     const number = useApp.getState().workspace.tabs.filter((t) => t.kind === 'query').length + 1
     const queryDatabase =
       target.engine === 'postgres'
@@ -210,6 +232,20 @@ function Workbench() {
     if (existing) useApp.getState().activate(existing.id)
     else useApp.getState().openTab({ connectionId: profile.id, kind: 'redis', title: 'Redis keys', sql: '' })
     useApp.getState().setSection('connections')
+  }
+  function openMongo(profile: ConnectionProfile) {
+    const state = useApp.getState()
+    const existing = state.workspace.tabs.find((t) => t.kind === 'mongo' && t.connectionId === profile.id)
+    if (existing) state.activate(existing.id)
+    else
+      state.openTab({
+        connectionId: profile.id,
+        kind: 'mongo',
+        title: 'MongoDB documents',
+        sql: '{}',
+        ...(profile.database ? { database: profile.database } : {}),
+      })
+    state.setSection('connections')
   }
   function openObject(profile: ConnectionProfile, object: ObjectInfo) {
     const database =
@@ -274,12 +310,12 @@ function Workbench() {
     }
   }
   async function saveQuery(tab = activeTab) {
-    if (!tab || (tab.kind !== 'query' && tab.kind !== 'table')) return
+    if (!tab || (tab.kind !== 'query' && tab.kind !== 'table' && tab.kind !== 'mongo')) return
     const target = profiles.find((p) => p.id === tab.connectionId)
     if (!target) return
     const name = await confirm({
       title: 'Save query',
-      description: 'Save this query locally for later. SQL and Redis commands can contain sensitive values.',
+      description: 'Save this query locally for later. Queries can contain sensitive values.',
       input: true,
       defaultValue: tab.title,
       label: 'Save query',
@@ -292,7 +328,10 @@ function Workbench() {
         sql: tab.sql,
         engine: target.engine,
         connectionId: target.id.startsWith('demo-') ? undefined : target.id,
-        ...(target.engine === 'postgres' && (tab.database || target.database)
+        ...(target.engine === 'mongodb'
+          ? { collection: tab.table || undefined, mongoMode: tab.mongoMode || 'find' }
+          : {}),
+        ...(['postgres', 'mongodb'].includes(target.engine) && (tab.database || target.database)
           ? { database: tab.database || target.database }
           : {}),
         folder: '',
@@ -306,7 +345,14 @@ function Workbench() {
       toast.error(errorText(e))
     }
   }
-  function openSaved(query: { name: string; sql: string; connectionId?: string; database?: string }) {
+  function openSaved(query: {
+    name: string
+    sql: string
+    connectionId?: string
+    database?: string
+    collection?: string
+    mongoMode?: 'find' | 'aggregate'
+  }) {
     const target = profiles.find((p) => p.id === query.connectionId) || resolveProfile()
     if (!target) {
       toast.info('Add a connection before opening a query.')
@@ -316,7 +362,8 @@ function Workbench() {
     useApp.getState().openTab({
       connectionId: target.id,
       ...(query.database ? { database: query.database } : {}),
-      kind: 'query',
+      kind: target.engine === 'mongodb' ? 'mongo' : 'query',
+      ...(target.engine === 'mongodb' ? { table: query.collection, mongoMode: query.mongoMode } : {}),
       title: query.name,
       sql: query.sql,
     })
@@ -579,7 +626,9 @@ function Workbench() {
                       className="query-workspace"
                       style={{ display: tab.id === workspace.activeTabId ? 'flex' : 'none' }}
                     >
-                      {tab.kind === 'query' ? (
+                      {profile.engine === 'mongodb' ? (
+                        <MongoBrowser tab={tab} profile={profile} onSave={() => void saveQuery(tab)} />
+                      ) : tab.kind === 'query' ? (
                         <Suspense fallback={<Loading text="Loading editor…" />}>
                           <QueryEditor
                             tab={tab}
@@ -800,6 +849,13 @@ function Welcome({
             <div>
               <strong>MariaDB</strong>
               <small>Databases, tables & SQL</small>
+            </div>
+          </div>
+          <div className="engine-summary">
+            <EngineIcon engine="mongodb" />
+            <div>
+              <strong>MongoDB</strong>
+              <small>Collections, documents & queries</small>
             </div>
           </div>
           <div className="engine-summary">

@@ -9,8 +9,14 @@ export const engineNames: Record<Engine, string> = {
   postgres: 'PostgreSQL',
   mariadb: 'MariaDB',
   redis: 'Redis',
+  mongodb: 'MongoDB',
 }
-export const enginePorts: Record<Engine, number> = { postgres: 5432, mariadb: 3306, redis: 6379 }
+export const enginePorts: Record<Engine, number> = {
+  postgres: 5432,
+  mariadb: 3306,
+  redis: 6379,
+  mongodb: 27017,
+}
 export const uid = () => crypto.randomUUID()
 export function displayCell(value: Cell | undefined): string {
   if (value === null) return 'NULL'
@@ -48,12 +54,33 @@ export function parseConnectionUrl(input: string): {
         ? 'mariadb'
         : url.protocol === 'redis:' || url.protocol === 'rediss:'
           ? 'redis'
-          : (() => {
-              throw new Error('Use a postgresql://, mariadb://, mysql://, redis://, or rediss:// URL.')
-            })()
+          : url.protocol === 'mongodb:' || url.protocol === 'mongodb+srv:'
+            ? 'mongodb'
+            : (() => {
+                throw new Error(
+                  'Use a postgresql://, mariadb://, mysql://, redis://, rediss://, mongodb://, or mongodb+srv:// URL.',
+                )
+              })()
+  if (engine === 'mongodb') {
+    const supported = new Set(['authSource', 'replicaSet', 'directConnection', 'tls', 'ssl'])
+    for (const [key, value] of url.searchParams) {
+      if (!supported.has(key))
+        throw new Error(
+          `MongoDB URL option ${key} is not supported. Remove it and review the connection fields.`,
+        )
+      if (['directConnection', 'tls', 'ssl'].includes(key) && !['true', 'false'].includes(value))
+        throw new Error(`${key} must be true or false.`)
+    }
+    if (url.protocol === 'mongodb+srv:' && url.port) throw new Error('SRV URLs must not specify a port.')
+  }
+  const explicitTls = url.searchParams.get('tls') ?? url.searchParams.get('ssl')
   const ssl =
-    url.protocol === 'rediss:' ||
-    ['require', 'verify-ca', 'verify-full'].includes(url.searchParams.get('sslmode') || '')
+    engine === 'mongodb'
+      ? explicitTls === 'true' || (url.protocol === 'mongodb+srv:' && explicitTls !== 'false')
+      : url.protocol === 'rediss:' ||
+        ['require', 'verify-ca', 'verify-full'].includes(url.searchParams.get('sslmode') || '')
+  if (engine === 'mongodb' && url.protocol === 'mongodb+srv:' && !ssl)
+    throw new Error('Harbor requires TLS for MongoDB SRV connections.')
   return {
     profile: {
       engine,
@@ -62,6 +89,19 @@ export function parseConnectionUrl(input: string): {
       username: decodeURIComponent(url.username),
       database: engine === 'redis' ? '' : decodeURIComponent(url.pathname.slice(1)),
       redisDb: engine === 'redis' ? Number(url.pathname.slice(1) || '0') : 0,
+      ...(engine === 'mongodb'
+        ? {
+            mongo: {
+              srv: url.protocol === 'mongodb+srv:',
+              authSource:
+                url.searchParams.get('authSource') ||
+                (url.protocol === 'mongodb+srv:' ? 'admin' : decodeURIComponent(url.pathname.slice(1))) ||
+                'admin',
+              replicaSet: url.searchParams.get('replicaSet') || '',
+              directConnection: url.searchParams.get('directConnection') === 'true',
+            },
+          }
+        : {}),
       tls: { enabled: ssl, rejectUnauthorized: true, ca: '', cert: '', keyPath: '' },
     },
     password: url.password ? decodeURIComponent(url.password) : undefined,

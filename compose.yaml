@@ -1,5 +1,30 @@
 name: harbor-db
 services:
+  mongodb:
+    image: mongo@sha256:9854f7139445d766a9523571d6f047530c45547460ffcf8259eb2bf4264632ca
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: harbor
+      MONGO_INITDB_ROOT_PASSWORD: harbor_test
+    ports: ['127.0.0.1:17017:27017']
+    tmpfs: ['/data/db', '/data/configdb']
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'mongosh',
+          '--quiet',
+          '--username',
+          'harbor',
+          '--password',
+          'harbor_test',
+          '--authenticationDatabase',
+          'admin',
+          '--eval',
+          'db.adminCommand({ ping: 1 })',
+        ]
+      interval: 2s
+      timeout: 5s
+      retries: 45
   timescale:
     profiles: ['timescale']
     image: timescale/timescaledb:2.27.1-pg17@sha256:6e4b469dee0395a8a6d8c818384b0226a749997a29a312f314413f98e4161f82

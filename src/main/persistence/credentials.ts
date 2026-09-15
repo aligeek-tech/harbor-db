@@ -174,7 +174,10 @@ export class CredentialService {
       for (const value of Object.values(secret)) if (value) message = message.split(value).join('[redacted]')
     }
     return message
-      .replace(/((?:postgres(?:ql)?|mariadb|mysql|redis|rediss):\/\/)[^\s/@]*@/gi, '$1[redacted]@')
+      .replace(
+        /((?:postgres(?:ql)?|mariadb|mysql|redis|rediss|mongodb(?:\+srv)?):\/\/)[^\s/@]*@/gi,
+        '$1[redacted]@',
+      )
       .replace(/\b(password|passwd|passphrase|AUTH)\s*[=: ]\s*[^\s,;]+/gi, '$1=[redacted]')
       .slice(0, 3000)
   }

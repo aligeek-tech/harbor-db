@@ -649,6 +649,7 @@ export function TableBrowser({
       ) : displaySet ? (
         <>
           <DataGrid
+            serverSort
             tab={tab}
             set={displaySet}
             modified={modified}

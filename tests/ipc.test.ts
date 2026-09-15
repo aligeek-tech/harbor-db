@@ -58,6 +58,7 @@ function boundary() {
     credentials,
     driver as unknown as SqlService,
     driver as unknown as RedisService,
+    driver as unknown as Parameters<typeof registerIpc>[6],
     vi.fn(),
   )
   cleanups.push(() => {
@@ -70,6 +71,30 @@ function boundary() {
 }
 
 describe('IPC boundary validation', () => {
+  it('does not route MongoDB operations through SQL connections', async () => {
+    const { store, invoke } = boundary()
+    store.saveProfile(
+      profileSchema.parse({
+        id: 'sql-only',
+        name: 'SQL only',
+        engine: 'postgres',
+        host: 'localhost',
+        port: 5432,
+      }),
+    )
+    await expect(
+      invoke('mongoRead', { connectionId: 'sql-only', database: 'db', collection: 'docs' }),
+    ).rejects.toThrow(/MongoDB connection/)
+    await expect(
+      invoke('mongoWrite', {
+        connectionId: 'sql-only',
+        database: 'db',
+        collection: 'docs',
+        action: 'delete',
+        original: '{}',
+      }),
+    ).rejects.toThrow(/MongoDB connection/)
+  })
   it('rejects unsafe and unknown profile payload fields', () => {
     const profile = profileSchema.parse({
       id: 'test',

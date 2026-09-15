@@ -14,6 +14,7 @@ import { MetadataStore } from './persistence/store'
 import { CredentialService } from './persistence/credentials'
 import { SqlService } from './engines/sql'
 import { RedisService } from './engines/redis'
+import { MongoService } from './engines/mongo'
 import { registerIpc } from './ipc'
 
 const runtimeDirectory = fileURLToPath(new URL('.', import.meta.url))
@@ -29,6 +30,7 @@ let store: MetadataStore | undefined
 let credentials: CredentialService | undefined
 const sql = new SqlService()
 const redis = new RedisService()
+const mongo = new MongoService()
 let shutdownStarted = false
 let shutdownComplete = false
 let removeIpc: (() => void) | undefined
@@ -37,7 +39,7 @@ export async function finishShutdown(): Promise<void> {
   if (shutdownStarted) return
   shutdownStarted = true
   try {
-    await Promise.allSettled([sql.closeAll(), redis.closeAll()])
+    await Promise.allSettled([sql.closeAll(), redis.closeAll(), mongo.closeAll()])
     credentials?.clearAll()
     store?.close()
   } catch (error) {
@@ -242,7 +244,7 @@ if (!isPrimaryInstance) {
               'The last saved workspace is preserved. Restart Harbor DB to recover it. Active server operations may have completed; inspect the database before retrying a write.',
             )
         })
-        removeIpc = registerIpc(window, expectedUrl, store, credentials, sql, redis, finishShutdown)
+        removeIpc = registerIpc(window, expectedUrl, store, credentials, sql, redis, mongo, finishShutdown)
         window.webContents.setZoomFactor(settings.zoom)
         window.on('close', (event) => {
           if (!shutdownComplete) {

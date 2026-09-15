@@ -22,7 +22,14 @@ import { EngineIcon, ErrorPanel, IconButton, useConfirm } from './common'
 
 interface LibraryProps {
   section: 'queries' | 'history'
-  onOpenQuery: (query: { name: string; sql: string; connectionId?: string; database?: string }) => void
+  onOpenQuery: (query: {
+    name: string
+    sql: string
+    connectionId?: string
+    database?: string
+    collection?: string
+    mongoMode?: 'find' | 'aggregate'
+  }) => void
   onImportSql: () => void
 }
 
@@ -201,6 +208,8 @@ export function Library({ section, onOpenQuery, onImportSql }: LibraryProps) {
                       sql: query.sql,
                       connectionId: query.connectionId,
                       database: query.database,
+                      collection: query.collection,
+                      mongoMode: query.mongoMode,
                     })
                   }
                   aria-label={`Open saved query ${query.name} without executing`}

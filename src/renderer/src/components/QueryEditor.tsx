@@ -49,7 +49,12 @@ self.MonacoEnvironment = {
   getWorker: (_id, label) => (label === 'json' ? new JsonWorker() : new EditorWorker()),
 }
 loader.config({ monaco })
-const editorLanguages = { postgres: 'harbor-pgsql', mariadb: 'harbor-mysql', redis: 'harbor-redis' } as const
+const editorLanguages = {
+  postgres: 'harbor-pgsql',
+  mariadb: 'harbor-mysql',
+  redis: 'harbor-redis',
+  mongodb: 'json',
+} as const
 // Eager local registration makes the first model independent of Monaco's lazy
 // language contributions, both in the Electron bundle and the browser preview.
 for (const [id, configuration, language] of [
@@ -243,7 +248,7 @@ export function QueryEditor({
         const objects = (useApp.getState().objects[profile.id] || []).filter(
           (object) => profile.engine !== 'postgres' || (object.database || profile.database) === database,
         )
-        if (profile.engine !== 'redis') {
+        if (profile.engine !== 'redis' && profile.engine !== 'mongodb') {
           const dialect = profile.engine
           const before = model.getLineContent(position.lineNumber).slice(0, position.column - 1)
           const qualifier = new RegExp(
@@ -389,6 +394,7 @@ export function QueryEditor({
     demo,
   ])
   async function run(scope: 'current' | 'script' | 'explain', explicitConfirm?: string) {
+    if (profile.engine === 'mongodb') return
     if (demo) {
       toast.info('Demo results are examples. Connect a database to execute commands.')
       return

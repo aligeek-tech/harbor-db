@@ -21,6 +21,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Cell, ResultSet, WorkspaceTab } from '@shared/contracts'
+import { compareCells } from '@shared/result-sort'
 import { api } from '../lib/api'
 import { cn, displayCell, errorText } from '../lib/utils'
 import { useApp } from '../store'
@@ -43,6 +44,7 @@ interface GridProps {
   onSelectRow?: (row: number) => void
   onSort?: (column: string, direction: 'asc' | 'desc') => void
   sort?: { column: string; direction: 'asc' | 'desc' }
+  serverSort?: boolean
   modified?: Set<string>
   deleted?: Set<number>
   onServerFilter?: () => void
@@ -62,6 +64,7 @@ export function DataGrid({
   onSelectRow,
   onSort,
   sort,
+  serverSort = false,
   modified,
   deleted,
   onServerFilter,
@@ -71,6 +74,13 @@ export function DataGrid({
   selectionDisabled = false,
   deleteDisabled = false,
 }: GridProps) {
+  const [localSort, setLocalSort] = useState<{ column: string; direction: 'asc' | 'desc' }>()
+  const remoteSort = serverSort || !!onSort
+  const activeSort = remoteSort ? sort : localSort
+  const chooseSort = (column: string, direction: 'asc' | 'desc') => {
+    if (remoteSort) onSort?.(column, direction)
+    else setLocalSort({ column, direction })
+  }
   const inspector = useApp((s) => s.workspace.settings.inspectorOpen)
   const density = useApp((s) => s.workspace.settings.density)
   const [filter, setFilter] = useState('')
@@ -115,8 +125,20 @@ export function DataGrid({
         .map((values, index) => ({ values, index }))
         .filter(
           (r) => !filter || r.values.some((v) => displayCell(v).toLowerCase().includes(filter.toLowerCase())),
-        ),
-    [set.rows, filter],
+        )
+        .sort((a, b) => {
+          if (remoteSort || !localSort) return 0
+          const index = set.columns.findIndex((column) => column.name === localSort.column)
+          if (index < 0) return 0
+          return (
+            compareCells(
+              a.values[index],
+              b.values[index],
+              /int|numeric|decimal|float|double|real/i.test(set.columns[index].type),
+            ) * (localSort.direction === 'asc' ? 1 : -1)
+          )
+        }),
+    [set.rows, set.columns, filter, remoteSort, localSort],
   )
   const rows = useMemo(() => filtered.map((r) => r.values), [filtered])
   const filteredPositions = useMemo(
@@ -368,6 +390,7 @@ export function DataGrid({
               </DropdownMenuGroup>
             </DropdownMenuContent>
           </DropdownMenu>
+          {!remoteSort && localSort && <span className="field-note">Sorted loaded rows only</span>}
           <IconButton
             label={inspector ? 'Hide inspector' : 'Show inspector'}
             onClick={() => useApp.getState().setSettings({ inspectorOpen: !inspector })}
@@ -375,7 +398,7 @@ export function DataGrid({
             <PanelRight />
           </IconButton>
         </div>
-        {(checkedIndices.length > 0 || onDeleteSelected) && (
+        {(checkedIndices.length > 0 || onDeleteSelected || onEdit) && (
           <div className="grid-selection-bar">
             <span role="status">
               {checkedIndices.length} {checkedIndices.length === 1 ? 'row' : 'rows'} selected
@@ -470,6 +493,13 @@ export function DataGrid({
                 {visibleColumns.map((c) => (
                   <th
                     key={c.id}
+                    aria-sort={
+                      activeSort?.column === set.columns[Number(c.id)].name
+                        ? activeSort.direction === 'asc'
+                          ? 'ascending'
+                          : 'descending'
+                        : 'none'
+                    }
                     style={{ width: c.getSize(), ...stickyStyle(c.id) }}
                     draggable
                     onDragStart={(e) => e.dataTransfer.setData('text/harbor-column', c.id)}
@@ -487,22 +517,39 @@ export function DataGrid({
                   >
                     <div className="flex items-center gap-1">
                       <button
-                        className="flex items-center gap-1 text-left"
-                        disabled={!onSort}
+                        className="column-name flex min-w-0 items-center gap-1 text-left"
+                        disabled={remoteSort && !onSort}
                         onClick={() =>
-                          onSort?.(
+                          chooseSort(
                             set.columns[Number(c.id)].name,
-                            sort?.column === set.columns[Number(c.id)].name && sort.direction === 'asc'
+                            activeSort?.column === set.columns[Number(c.id)].name &&
+                              activeSort.direction === 'asc'
                               ? 'desc'
                               : 'asc',
                           )
                         }
                       >
                         {set.columns[Number(c.id)].key && <KeyRound />}
-                        {set.columns[Number(c.id)].name}
-                        {sort?.column === set.columns[Number(c.id)].name &&
-                          (sort.direction === 'asc' ? <ArrowUp /> : <ArrowDown />)}
+                        <span className="truncate">{set.columns[Number(c.id)].name}</span>
                       </button>
+                      <span className="column-sort-actions">
+                        {(['asc', 'desc'] as const).map((direction) => (
+                          <button
+                            key={direction}
+                            type="button"
+                            aria-label={`Sort ${set.columns[Number(c.id)].name} ${direction === 'asc' ? 'ascending' : 'descending'}`}
+                            title={`${direction === 'asc' ? 'Ascending' : 'Descending'} · ${remoteSort ? 'server-side sort' : 'loaded rows only'}`}
+                            aria-pressed={
+                              activeSort?.column === set.columns[Number(c.id)].name &&
+                              activeSort.direction === direction
+                            }
+                            disabled={remoteSort && !onSort}
+                            onClick={() => chooseSort(set.columns[Number(c.id)].name, direction)}
+                          >
+                            {direction === 'asc' ? <ArrowUp /> : <ArrowDown />}
+                          </button>
+                        ))}
+                      </span>
                     </div>
                     <small>{set.columns[Number(c.id)].type}</small>
                     <div

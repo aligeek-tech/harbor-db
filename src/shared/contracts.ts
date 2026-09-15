@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-export const engineSchema = z.enum(['postgres', 'mariadb', 'redis'])
+export const engineSchema = z.enum(['postgres', 'mariadb', 'redis', 'mongodb'])
 export type Engine = z.infer<typeof engineSchema>
 export const profileSchema = z
   .object({
@@ -13,6 +13,15 @@ export const profileSchema = z
     database: z.string().max(255).default(''),
     schema: z.string().max(255).default('public'),
     redisDb: z.number().int().min(0).max(1024).default(0),
+    mongo: z
+      .object({
+        srv: z.boolean().default(false),
+        authSource: z.string().min(1).max(255).default('admin'),
+        replicaSet: z.string().max(255).default(''),
+        directConnection: z.boolean().default(false),
+      })
+      .strict()
+      .default({ srv: false, authSource: 'admin', replicaSet: '', directConnection: false }),
     environment: z.string().min(1).max(40).default('local'),
     color: z.string().max(32).default(''),
     folder: z.string().max(100).default(''),
@@ -255,7 +264,8 @@ export const tabSchema = z
     id: z.string(),
     connectionId: z.string(),
     database: z.string().min(1).max(255).optional(),
-    kind: z.enum(['query', 'table', 'redis']),
+    kind: z.enum(['query', 'table', 'redis', 'mongo']),
+    mongoMode: z.enum(['find', 'aggregate']).optional(),
     title: z.string().max(255),
     sql: z.string().max(1000000).default(''),
     schema: z.string().max(255).optional(),
@@ -294,6 +304,8 @@ export const savedQuerySchema = z
   .object({
     id: z.string(),
     name: z.string().min(1).max(255),
+    collection: z.string().min(1).max(255).optional(),
+    mongoMode: z.enum(['find', 'aggregate']).optional(),
     sql: z.string().max(1000000),
     engine: engineSchema,
     connectionId: z.string().optional(),
@@ -332,6 +344,10 @@ export const importSchema = z
   })
   .strict()
 export interface HarborAPI {
+  mongoDatabases(id: string): Promise<string[]>
+  mongoCollections(input: { connectionId: string; database: string }): Promise<string[]>
+  mongoRead(input: MongoReadInput): Promise<MongoReadResult>
+  mongoWrite(input: MongoWriteInput): Promise<void>
   bootstrap(): Promise<Bootstrap>
   saveProfile(input: SaveProfileInput): Promise<ConnectionProfile>
   deleteProfile(id: string): Promise<void>
@@ -391,6 +407,40 @@ export interface HarborAPI {
   readyToClose(): Promise<void>
   onMenu(callback: (action: string) => void): () => void
 }
+
+const mongoTarget = {
+  connectionId: z.string().min(1).max(100),
+  database: z.string().min(1).max(255),
+  collection: z.string().min(1).max(255),
+}
+export const mongoReadSchema = z
+  .object({
+    ...mongoTarget,
+    mode: z.enum(['find', 'aggregate']).default('find'),
+    query: z.string().min(1).max(1000000).default('{}'),
+    sort: z.string().max(255).optional(),
+    direction: z.enum(['asc', 'desc']).default('asc'),
+    offset: z.number().int().min(0).max(1000000).default(0),
+    limit: z.number().int().min(1).max(1000).default(100),
+  })
+  .strict()
+export type MongoReadInput = z.infer<typeof mongoReadSchema>
+export interface MongoReadResult {
+  documents: string[]
+  set: ResultSet
+  durationMs: number
+  hasMore: boolean
+  truncated: boolean
+}
+export const mongoWriteSchema = z
+  .object({
+    ...mongoTarget,
+    action: z.enum(['insert', 'replace', 'delete']),
+    original: z.string().max(1000000).optional(),
+    document: z.string().max(1000000).optional(),
+  })
+  .strict()
+export type MongoWriteInput = z.infer<typeof mongoWriteSchema>
 declare global {
   interface Window {
     harbor: HarborAPI

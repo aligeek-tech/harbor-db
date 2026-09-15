@@ -149,7 +149,7 @@ export function ConnectionDialog({ initial, onClose }: { initial?: ConnectionPro
         : {}),
       engine,
       port: enginePorts[engine],
-      username: engine === 'redis' ? '' : engine === 'postgres' ? 'postgres' : 'root',
+      username: engine === 'redis' || engine === 'mongodb' ? '' : engine === 'postgres' ? 'postgres' : 'root',
       database: '',
       schema: engine === 'postgres' ? 'public' : '',
     })
@@ -176,7 +176,7 @@ export function ConnectionDialog({ initial, onClose }: { initial?: ConnectionPro
           variant="outline"
           aria-label="Database engine"
         >
-          {(['postgres', 'mariadb', 'redis'] as Engine[]).map((engine) => (
+          {(['postgres', 'mariadb', 'redis', 'mongodb'] as Engine[]).map((engine) => (
             <ToggleGroupItem key={engine} value={engine}>
               <EngineIcon engine={engine} />
               {engineNames[engine]}
@@ -193,7 +193,9 @@ export function ConnectionDialog({ initial, onClose }: { initial?: ConnectionPro
               placeholder={
                 profile.engine === 'redis'
                   ? 'redis://user:password@localhost:6379/0'
-                  : 'postgresql://user:password@localhost:5432/database'
+                  : profile.engine === 'mongodb'
+                    ? 'mongodb://user:password@localhost:27017/database?authSource=admin'
+                    : 'postgresql://user:password@localhost:5432/database'
               }
               value={url}
               onChange={(e) => setUrl(e.target.value)}
@@ -282,6 +284,50 @@ export function ConnectionDialog({ initial, onClose }: { initial?: ConnectionPro
                 </p>
               )}
             </Field>
+          )}
+          {profile.engine === 'mongodb' && (
+            <>
+              <Field>
+                <FieldLabel>Authentication database</FieldLabel>
+                <Input
+                  aria-label="MongoDB authentication database"
+                  value={profile.mongo.authSource}
+                  onChange={(e) => update({ mongo: { ...profile.mongo, authSource: e.target.value } })}
+                />
+              </Field>
+              <Field>
+                <FieldLabel>Replica set (optional)</FieldLabel>
+                <Input
+                  aria-label="MongoDB replica set"
+                  value={profile.mongo.replicaSet}
+                  onChange={(e) => update({ mongo: { ...profile.mongo, replicaSet: e.target.value } })}
+                />
+              </Field>
+              <label className="check-row">
+                <input
+                  type="checkbox"
+                  checked={profile.mongo.srv}
+                  onChange={(e) =>
+                    update({
+                      mongo: { ...profile.mongo, srv: e.target.checked, directConnection: false },
+                      ...(e.target.checked ? { tls: { ...profile.tls, enabled: true } } : {}),
+                    })
+                  }
+                />
+                Use SRV discovery (MongoDB Atlas)
+              </label>
+              <label className="check-row">
+                <input
+                  type="checkbox"
+                  disabled={profile.mongo.srv}
+                  checked={profile.mongo.directConnection}
+                  onChange={(e) =>
+                    update({ mongo: { ...profile.mongo, directConnection: e.target.checked } })
+                  }
+                />
+                Direct connection to this host
+              </label>
+            </>
           )}
           <Field>
             <FieldLabel htmlFor="connection-environment">Environment</FieldLabel>

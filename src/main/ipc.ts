@@ -11,6 +11,8 @@ import {
   redisInspectSchema,
   redisMutateSchema,
   redisScanSchema,
+  mongoReadSchema,
+  mongoWriteSchema,
   savedQuerySchema,
   saveProfileSchema,
   secretsSchema,
@@ -26,6 +28,7 @@ import { CredentialService, redactHistory } from './persistence/credentials'
 import { exportLoadedData } from './persistence/export'
 import type { SqlService } from './engines/sql'
 import type { RedisService } from './engines/redis'
+import type { MongoService } from './engines/mongo'
 
 const id = z.string().min(1).max(100)
 const context = { connectionId: id, sessionId: id }
@@ -65,6 +68,7 @@ const executionContext = (profile: ConnectionProfile) =>
     database: profile.database,
     schema: profile.schema,
     redisDb: profile.redisDb,
+    mongo: profile.mongo,
     readOnly: profile.readOnly,
     connectTimeout: profile.connectTimeout,
     queryTimeout: profile.queryTimeout,
@@ -72,6 +76,10 @@ const executionContext = (profile: ConnectionProfile) =>
     ssh: profile.ssh,
   })
 export const ipcSchemas = {
+  mongoDatabases: id,
+  mongoCollections: z.object({ connectionId: id, database: z.string().min(1).max(255) }).strict(),
+  mongoRead: mongoReadSchema,
+  mongoWrite: mongoWriteSchema,
   bootstrap: z.undefined(),
   saveProfile: saveProfileSchema,
   deleteProfile: id,
@@ -142,6 +150,7 @@ export function registerIpc(
   credentials: CredentialService,
   sql: SqlService,
   redis: RedisService,
+  mongo: MongoService,
   finishShutdown: () => Promise<void>,
 ): () => void {
   const locks = new Map<string, Promise<unknown>>()
@@ -155,15 +164,19 @@ export function registerIpc(
       if (locks.get(connectionId) === current) locks.delete(connectionId)
     }
   }
-  const service = (profile: ConnectionProfile): SqlService | RedisService =>
-    profile.engine === 'redis' ? redis : sql
+  const service = (profile: ConnectionProfile): SqlService | RedisService | MongoService =>
+    profile.engine === 'mongodb' ? mongo : profile.engine === 'redis' ? redis : sql
   const requireSql = (connectionId: string): void => {
-    if (store.profile(connectionId).engine === 'redis')
+    if (!['postgres', 'mariadb'].includes(store.profile(connectionId).engine))
       throw new Error('This action requires a PostgreSQL or MariaDB connection.')
   }
   const requireRedis = (connectionId: string): void => {
     if (store.profile(connectionId).engine !== 'redis')
       throw new Error('This action requires a Redis connection.')
+  }
+  const requireMongo = (connectionId: string): void => {
+    if (store.profile(connectionId).engine !== 'mongodb')
+      throw new Error('This action requires a MongoDB connection.')
   }
   const checkedFile = async (path: string, limit: number): Promise<string> => {
     const info = await stat(path)
@@ -196,6 +209,22 @@ export function registerIpc(
   const handlers: {
     [K in keyof typeof ipcSchemas]: (input: z.infer<(typeof ipcSchemas)[K]>) => unknown | Promise<unknown>
   } = {
+    mongoDatabases: (id) => {
+      requireMongo(id)
+      return mongo.databases(id)
+    },
+    mongoCollections: (input) => {
+      requireMongo(input.connectionId)
+      return mongo.collections(input)
+    },
+    mongoRead: (input) => {
+      requireMongo(input.connectionId)
+      return mongo.read(input)
+    },
+    mongoWrite: (input) => {
+      requireMongo(input.connectionId)
+      return mongo.write(input)
+    },
     bootstrap: () => ({
       profiles: store.profiles(),
       workspace: store.workspace(),
@@ -282,9 +311,10 @@ export function registerIpc(
     },
     query: async (input) => {
       const profile = store.profile(input.connectionId)
+      if (profile.engine === 'mongodb') throw new Error('Use the MongoDB document browser for JSON queries.')
       const start = performance.now()
       try {
-        const result = await service(profile).execute(input)
+        const result = await (profile.engine === 'redis' ? redis : sql).execute(input)
         store.addHistory(
           {
             connectionId: input.connectionId,
@@ -326,6 +356,8 @@ export function registerIpc(
       }
     },
     cancel: (input) => {
+      if (store.profile(input.connectionId).engine === 'mongodb')
+        return { requested: false, message: 'MongoDB queries are bounded by the connection timeout.' }
       if (store.profile(input.connectionId).engine === 'redis')
         return {
           requested: false,
@@ -339,13 +371,15 @@ export function registerIpc(
       return sql.transaction(input)
     },
     closeSession: (input) => {
-      if (store.profile(input.connectionId).engine !== 'redis') return sql.closeSession(input)
+      if (['postgres', 'mariadb'].includes(store.profile(input.connectionId).engine))
+        return sql.closeSession(input)
     },
     getSessionState: (input) => {
-      if (store.profile(input.connectionId).engine === 'redis')
+      if (['redis', 'mongodb'].includes(store.profile(input.connectionId).engine))
         return {
           state: 'idle',
-          connected: redis.status(input.connectionId).state === 'connected',
+          connected:
+            service(store.profile(input.connectionId)).status(input.connectionId).state === 'connected',
           running: false,
         }
       return sql.getSessionState(input)

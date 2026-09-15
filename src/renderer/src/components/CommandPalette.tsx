@@ -22,7 +22,14 @@ interface PaletteProps {
   onClose: () => void
   onAction: (action: string) => void
   onConnect: (profile: ConnectionProfile) => Promise<void>
-  onOpenQuery: (query: { name: string; sql: string; connectionId?: string; database?: string }) => void
+  onOpenQuery: (query: {
+    name: string
+    sql: string
+    connectionId?: string
+    database?: string
+    collection?: string
+    mongoMode?: 'find' | 'aggregate'
+  }) => void
   onOpenObject: (profile: ConnectionProfile, object: ObjectInfo) => void
 }
 interface Item {
@@ -151,6 +158,8 @@ export function CommandPalette({ onClose, onAction, onConnect, onOpenQuery, onOp
             sql: query.sql,
             connectionId: query.connectionId,
             database: query.database,
+            collection: query.collection,
+            mongoMode: query.mongoMode,
           }),
       })
     const words = term.split(/\s+/).filter(Boolean)

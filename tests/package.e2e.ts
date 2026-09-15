@@ -64,13 +64,14 @@ test('packaged Linux application loads local assets, SQLite, sandbox and all dat
     expect(await page.evaluate(() => typeof (globalThis as unknown as { require?: unknown }).require)).toBe(
       'undefined',
     )
-    const profiles = (['postgres', 'mariadb', 'redis'] as const).map((engine) =>
+    const profiles = (['postgres', 'mariadb', 'redis', 'mongodb'] as const).map((engine) =>
       profileSchema.parse({
         id: `package-${engine}`,
         name: `Packaged ${engine}`,
         engine,
         host: '127.0.0.1',
-        port: engine === 'postgres' ? 15432 : engine === 'mariadb' ? 13306 : 16379,
+        port:
+          engine === 'postgres' ? 15432 : engine === 'mariadb' ? 13306 : engine === 'mongodb' ? 17017 : 16379,
         username: engine === 'redis' ? '' : 'harbor',
         database: engine === 'redis' ? '' : 'harbor',
         schema: engine === 'postgres' ? 'public' : engine === 'mariadb' ? 'harbor' : '',
@@ -88,7 +89,21 @@ test('packaged Linux application loads local assets, SQLite, sandbox and all dat
           })
           const state = await window.harbor.connect({ id: profile.id })
           results.push({ engine: profile.engine, state: state.state })
-          if (profile.engine !== 'redis') {
+          if (profile.engine === 'mongodb') {
+            const databases = await window.harbor.mongoDatabases(profile.id)
+            if (!databases.includes('admin')) throw new Error('Packaged MongoDB catalog did not load')
+            const data = await window.harbor.mongoRead({
+              connectionId: profile.id,
+              database: 'admin',
+              collection: 'system.version',
+              mode: 'find',
+              query: '{}',
+              limit: 10,
+              offset: 0,
+              direction: 'asc',
+            })
+            if (!data.documents.length) throw new Error('Packaged MongoDB document read did not load')
+          } else if (profile.engine !== 'redis') {
             const data = await window.harbor.query({
               connectionId: profile.id,
               sessionId: 'package-smoke',
@@ -115,7 +130,12 @@ test('packaged Linux application loads local assets, SQLite, sandbox and all dat
       },
       { profiles, rememberPasswords: secureStorage.available },
     )
-    expect(results.map((result) => result.state)).toEqual(['connected', 'connected', 'connected'])
+    expect(results.map((result) => result.state)).toEqual([
+      'connected',
+      'connected',
+      'connected',
+      'connected',
+    ])
     await page.reload()
     await page.getByRole('button', { name: 'Packaged postgres', exact: true }).click()
     await page.getByRole('button', { name: 'New query', exact: true }).first().click()
@@ -152,7 +172,7 @@ test('packaged Linux application loads local assets, SQLite, sandbox and all dat
         }
         return states
       })
-      expect(states).toEqual(['connected', 'connected', 'connected'])
+      expect(states).toEqual(['connected', 'connected', 'connected', 'connected'])
       rememberedReconnect = { exercised: true, states }
     }
     await mkdir('/tmp/harbor-db-e2e', { recursive: true })

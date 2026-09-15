@@ -2,22 +2,22 @@
 
 # Harbor DB
 
-A local Electron workspace for PostgreSQL, MariaDB and standalone Redis. Connections go directly from your computer to your databases. No account, backend service, subscription or AI connection is required.
+A local Electron workspace for PostgreSQL, MariaDB, MongoDB and standalone Redis. Connections go directly from your computer to your databases. No account, backend service, subscription or AI connection is required.
 
 ![PostgreSQL server browsing with generated local test databases](docs/screenshots/postgres-server.png)
 
 ## Downloads
 
-Install Harbor DB without Node.js, npm, or a source checkout. Download version **0.1.4** for your computer:
+Install Harbor DB without Node.js, npm, or a source checkout. Download version **0.1.5** for your computer:
 
 | Platform                   | Downloads                                                                                                                                                                                                                                           |
 | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Linux (64-bit Intel/AMD)   | [Debian / Ubuntu (.deb)](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.4/Harbor-DB-0.1.4-linux-amd64.deb) · [AppImage](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.4/Harbor-DB-0.1.4-linux-x86_64.AppImage) |
-| Windows (64-bit Intel/AMD) | [Setup (.exe)](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.4/Harbor-DB-0.1.4-win-x64.exe)                                                                                                                                      |
-| macOS 13+ (Apple Silicon)  | [Installer (.dmg)](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.4/Harbor-DB-0.1.4-mac-arm64.dmg) · [ZIP](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.4/Harbor-DB-0.1.4-mac-arm64.zip)                      |
-| macOS 13+ (Intel)          | [Installer (.dmg)](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.4/Harbor-DB-0.1.4-mac-x64.dmg) · [ZIP](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.4/Harbor-DB-0.1.4-mac-x64.zip)                          |
+| Linux (64-bit Intel/AMD)   | [Debian / Ubuntu (.deb)](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.5/Harbor-DB-0.1.5-linux-amd64.deb) · [AppImage](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.5/Harbor-DB-0.1.5-linux-x86_64.AppImage) |
+| Windows (64-bit Intel/AMD) | [Setup (.exe)](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.5/Harbor-DB-0.1.5-win-x64.exe)                                                                                                                                      |
+| macOS 13+ (Apple Silicon)  | [Installer (.dmg)](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.5/Harbor-DB-0.1.5-mac-arm64.dmg) · [ZIP](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.5/Harbor-DB-0.1.5-mac-arm64.zip)                      |
+| macOS 13+ (Intel)          | [Installer (.dmg)](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.5/Harbor-DB-0.1.5-mac-x64.dmg) · [ZIP](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.5/Harbor-DB-0.1.5-mac-x64.zip)                          |
 
-[All releases and release notes](https://github.com/aligeek-tech/harbor-db/releases/latest) · [SHA-256 checksums](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.4/SHA256SUMS)
+[All releases and release notes](https://github.com/aligeek-tech/harbor-db/releases/latest) · [SHA-256 checksums](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.5/SHA256SUMS)
 
 Windows builds are unsigned; macOS builds use an ad-hoc signature and are not notarized. Your operating system may require an explicit installation approval. See [installation and verification instructions](docs/RELEASE.md), including the recommended `.deb` installation on Ubuntu.
 
@@ -59,13 +59,16 @@ npm run db:up
 npm run db:seed
 ```
 
-| Engine        | Host      | Port  | User        | Password    | Database |
-| ------------- | --------- | ----- | ----------- | ----------- | -------- |
-| PostgreSQL 17 | 127.0.0.1 | 15432 | harbor      | harbor_test | harbor   |
-| MariaDB 11.4  | 127.0.0.1 | 13306 | harbor      | harbor_test | harbor   |
-| Redis 8       | 127.0.0.1 | 16379 | leave blank | harbor_test | 0        |
+| Engine        | Host      | Port  | User        | Password    | Database                   |
+| ------------- | --------- | ----- | ----------- | ----------- | -------------------------- |
+| PostgreSQL 17 | 127.0.0.1 | 15432 | harbor      | harbor_test | harbor                     |
+| MariaDB 11.4  | 127.0.0.1 | 13306 | harbor      | harbor_test | harbor                     |
+| MongoDB 7     | 127.0.0.1 | 17017 | harbor      | harbor_test | harbor (authSource: admin) |
+| Redis 8       | 127.0.0.1 | 16379 | leave blank | harbor_test | 0                          |
 
 The seed creates 12 customers and 100,000 orders in each SQL engine, plus 100,000 Redis benchmark keys and examples of every supported value type. Re-running the seed preserves SQL rows and refreshes its named Redis fixtures. Use `npm run db:down` to stop services; all three named data volumes remain. Redis uses its normal RDB snapshot persistence, so an abrupt container failure can lose changes since its last snapshot. Delete volumes only when you intend to remove those test databases.
+
+MongoDB uses disposable in-memory container storage; its data is discarded when the container stops. Integration tests create and clean up generated databases. The fixture uses MongoDB 7 because [MongoDB 8 currently refuses to start on Linux kernels 6.19 and newer](https://www.mongodb.com/community/forums/t/mongodb-8-x-and-linux-kernel-6-19/337547).
 
 TimescaleDB regression tests use an optional, disposable PostgreSQL 17 service on `127.0.0.1:15433`, with the same `harbor` / `harbor_test` development credentials. After starting the ordinary development services, enable it with:
 
@@ -75,16 +78,17 @@ HARBOR_INTEGRATION=1 HARBOR_TIMESCALE=1 npm test
 HARBOR_INTEGRATION=1 HARBOR_TIMESCALE=1 npm run test:e2e
 ```
 
-The Timescale image is pinned to version 2.27.1 and its digest. Its storage is temporary and is discarded when the container stops. Tests create and clean up their own databases. CI includes this profile; normal `npm run db:up` still starts only the three core services.
+The Timescale image is pinned to version 2.27.1 and its digest. Its storage is temporary and is discarded when the container stops. Tests create and clean up their own databases. CI includes this profile; normal `npm run db:up` starts PostgreSQL, MariaDB, Redis and MongoDB.
 
 ## Daily workflow
 
 1. Choose **Add connection**, select an engine, and fill in fields or parse a connection URL. **Test connection**, **Save**, and **Save and connect** are separate operations. Saving works while a server is offline.
 2. Leave **Database** blank for PostgreSQL or MariaDB to list accessible databases under one connection. Expand a PostgreSQL database, then its schemas, to browse tables; **New query** inside a database opens an editor bound to it. An unbound PostgreSQL query asks you to choose a database before running. MariaDB queries with no default database use qualified table names. Supplying a Database keeps the explorer focused on it; **Open another database** opens a separate profile for an explicitly configured connection. The environment badge (such as production) does not choose a database. Selecting a sidebar item never retargets an existing editor.
 3. Open a query with **New query**, or use the SQL editor directly below the connection context in a table tab. Table browsing displays the fetched page's SELECT with its filter, ordering, and pagination values. **Run** executes the selected text or the statement at the cursor; **Run script** executes the entire document. Edited SQL results appear below the editor. **Return to table** restores table browsing after any open transaction is completed; replacing an edited draft asks for confirmation. Restored table SQL drafts wait for you to run them or return to the table.
-4. SQL table tabs fetch 200 rows by default. Sort headers and use the server filter to fetch a filtered page. The grid search filters loaded rows. Click a cell or row number to select its row; Cmd/Ctrl-click toggles individual rows and Shift-click selects a visible range. These actions, keyboard selection, and row checkboxes share the same selection. The header checkbox selects filtered loaded rows. Use **Delete selected** to review and confirm a batch of up to 200 rows. The selection count includes rows hidden by the grid filter; refreshing a page clears selection. Deletion requires a writable connection and a primary key. Double-click an editable cell to stage changes; review and apply them together. Edited SQL results support selection/export; return to the table for row edits and deletion.
+4. SQL table tabs fetch 200 rows by default. Use the ascending/descending arrow buttons beside each column and the server filter to fetch a filtered page. The grid search filters loaded rows. Click a cell or row number to select its row; Cmd/Ctrl-click toggles individual rows and Shift-click selects a visible range. These actions, keyboard selection, and row checkboxes share the same selection. The header checkbox selects filtered loaded rows. Use **Delete selected** to review and confirm a batch of up to 200 rows. The selection count includes rows hidden by the grid filter; refreshing a page clears selection. Deletion requires a writable connection and a primary key. Double-click an editable cell to stage changes; review and apply them together. Edited SQL results sort only their loaded rows and support selection/export; return to the table for row edits and deletion.
 5. Redis has a key browser and separate console. Discover keys incrementally with SCAN. Inspect a key, stage a string change, review it, then apply. The original TTL is retained; the expiration control changes TTL explicitly.
-6. Use **Save query** or Cmd/Ctrl+S in a query or table editor to save the displayed SQL to **Saved queries**. Opening a saved query restores its text and PostgreSQL database target without executing it; saving from a table keeps the table tab's name. History also retains the PostgreSQL database target. You can also export selected rows/loaded results. Connection imports show a preview and assign new IDs instead of overwriting existing profiles.
+6. MongoDB offers a database/collection browser, Extended JSON filters, and read-only aggregation pipelines. Run with **Run query** or Cmd/Ctrl+Enter. Double-click a cell to view or edit the complete document; insert, replace and delete operations show a confirmation and require writes enabled. Editing and deletion compare the original document to detect concurrent changes. MongoDB query tabs and saved queries preserve their database, collection and query mode.
+7. Use **Save query** or Cmd/Ctrl+S in a query or table editor to save the displayed SQL to **Saved queries**. Opening a saved query restores its text and PostgreSQL database target without executing it; saving from a table keeps the table tab's name. History also retains the PostgreSQL database target. You can also export selected rows/loaded results. Connection imports show a preview and assign new IDs instead of overwriting existing profiles.
 
 Read-only is initially enabled, including newly designated production profiles. Change it deliberately in the connection dialog to enable edits. Database read-only permissions are still essential: the application safeguard prevents accidental writes and is not a security boundary against hostile databases or privileged stored routines.
 

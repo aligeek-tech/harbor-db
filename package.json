@@ -1,7 +1,7 @@
 {
   "name": "harbor-db",
-  "version": "0.1.4",
-  "description": "A local desktop workspace for PostgreSQL, MariaDB, and Redis",
+  "version": "0.1.5",
+  "description": "A local desktop workspace for PostgreSQL, MariaDB, MongoDB, and Redis",
   "homepage": "https://github.com/aligeek-tech/harbor-db",
   "repository": {
     "type": "git",
@@ -49,6 +49,7 @@
     "lucide-react": "1.46.0",
     "mariadb": "3.5.4",
     "monaco-editor": "0.56.0",
+    "mongodb": "7.6.0",
     "pg": "8.23.0",
     "pg-cursor": "2.22.0",
     "radix-ui": "1.6.7",

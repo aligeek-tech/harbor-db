@@ -75,7 +75,8 @@ type Inspection = {
 type DatabasePicker = { profile: ConnectionProfile; databases?: string[]; error?: string }
 const relational = (object: ObjectInfo) => ['table', 'view', 'materialized view'].includes(object.kind)
 const isDemo = (profile: ConnectionProfile) => profile.id.startsWith('demo-')
-const serverExplorer = (profile: ConnectionProfile) => profile.engine !== 'redis' && !profile.database
+const serverExplorer = (profile: ConnectionProfile) =>
+  !['redis', 'mongodb'].includes(profile.engine) && !profile.database
 const databaseKey = (id: string, database: string) => `${id}:database:${encodeURIComponent(database)}`
 const databaseSchemaKey = (id: string, database: string, schema: string) =>
   `${databaseKey(id, database)}:schema:${encodeURIComponent(schema)}`
@@ -237,7 +238,8 @@ export function Sidebar({
         : schema
           ? `${profile.id}:schema:${schema}`
           : profile.id
-      if (profile.engine === 'redis' || isDemo(profile) || pending.current.has(requestKey)) return
+      if (['redis', 'mongodb'].includes(profile.engine) || isDemo(profile) || pending.current.has(requestKey))
+        return
       const state = useApp.getState()
       if (!force) {
         if (database && loadedDatabases.current.get(profile.id)?.has(database)) return
@@ -972,7 +974,7 @@ export function Sidebar({
                                     Reconnect
                                   </DropdownMenuItem>
                                 )}
-                                {profile.engine !== 'redis' && (
+                                {!['redis', 'mongodb'].includes(profile.engine) && (
                                   <DropdownMenuItem
                                     disabled={!connected}
                                     onSelect={() => run(() => databases(profile))}
@@ -1054,7 +1056,7 @@ export function Sidebar({
                               <span className="ml-auto" title={`${profile.environment} environment`}>
                                 {profile.environment}
                               </span>
-                              {profile.engine !== 'redis' && (
+                              {!['redis', 'mongodb'].includes(profile.engine) && (
                                 <IconButton
                                   label={`Refresh ${profile.name} objects`}
                                   disabled={loading[profile.id]}
@@ -1064,23 +1066,31 @@ export function Sidebar({
                                 </IconButton>
                               )}
                             </div>
-                            {profile.engine === 'redis' ? (
+                            {['redis', 'mongodb'].includes(profile.engine) ? (
                               <button
                                 type="button"
                                 className="object-row"
                                 onClick={() => {
                                   const state = useApp.getState()
                                   state.setSection('connections')
+                                  const kind = profile.engine === 'mongodb' ? 'mongo' : 'redis'
                                   const existing = state.workspace.tabs.find(
-                                    (tab) => tab.connectionId === profile.id && tab.kind === 'redis',
+                                    (tab) => tab.connectionId === profile.id && tab.kind === kind,
                                   )
                                   if (existing) state.activate(existing.id)
                                   else
-                                    state.openTab({ connectionId: profile.id, kind: 'redis', title: 'Keys' })
+                                    state.openTab({
+                                      connectionId: profile.id,
+                                      kind,
+                                      title: kind === 'mongo' ? 'MongoDB documents' : 'Keys',
+                                      sql: kind === 'mongo' ? '{}' : '',
+                                    })
                                 }}
                               >
                                 <KeyRound />
-                                <span>Browse keys</span>
+                                <span>
+                                  {profile.engine === 'mongodb' ? 'Browse collections' : 'Browse keys'}
+                                </span>
                                 <ChevronRight className="ml-auto" />
                               </button>
                             ) : (
