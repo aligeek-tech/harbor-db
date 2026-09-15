@@ -2,7 +2,7 @@
 
 Download Harbor DB from [GitHub Releases](https://github.com/aligeek-tech/harbor-db/releases). Choose a release asset below; GitHub's automatically generated **Source code** archives do not contain an installed application.
 
-Version **0.1.6** adds separate ascending and descending arrow buttons beside every result column. Table and MongoDB browsing sort on the server; authored query results sort the loaded rows, with exact numeric comparisons and synchronized selection.
+Version **0.1.7** adds separate ascending and descending arrow buttons beside every result column. Table and MongoDB browsing sort on the server; authored query results sort the loaded rows, with exact numeric comparisons and synchronized selection.
 
 MongoDB connections now support authorized database/collection browsing, Extended JSON find filters and read-only aggregation pipelines, and confirmed document insert/edit/delete. BSON types survive editing; replacements keep the original `_id`, and replacement/deletion reject concurrent document changes. Saved queries keep their database, collection and query mode. Read-only safeguards remain enforced in the main process. See [MongoDB capabilities and limits](CAPABILITIES.md#mongodb) for query syntax, connection options and bounded previews.
 
@@ -16,7 +16,7 @@ The large TimescaleDB table preview fix from 0.1.4 is included.
 | Mac with Apple Silicon             | `Harbor-DB-VERSION-mac-arm64.dmg` or `.zip` | Use the ARM build for M-series Macs; install as above.                                            |
 | Windows, Intel or AMD 64-bit       | `Harbor-DB-VERSION-win-x64.exe`             | Run the installer and choose an installation directory.                                           |
 
-For this release, replace `VERSION` with `0.1.6`. Linux ARM and Windows ARM installers are not currently produced. macOS 13 or later is required by [Electron 44](https://www.electronjs.org/blog/electron-44-0). Builds run on native Linux, Intel Mac, Apple Silicon Mac, and Windows runners; a successful packaging job does not establish compatibility with every operating-system version.
+For this release, replace `VERSION` with `0.1.7`. Linux ARM and Windows ARM installers are not currently produced. macOS 13 or later is required by [Electron 44](https://www.electronjs.org/blog/electron-44-0). Builds run on native Linux, Intel Mac, Apple Silicon Mac, and Windows runners; a successful packaging job does not establish compatibility with every operating-system version.
 
 ## Verify a download
 
@@ -35,7 +35,7 @@ Windows may show an unknown-publisher or SmartScreen warning. If the release is 
 On Ubuntu/Debian, install the DEB using the package manager, for example:
 
 ```sh
-sudo apt install ./Harbor-DB-0.1.6-linux-amd64.deb
+sudo apt install ./Harbor-DB-0.1.7-linux-amd64.deb
 ```
 
 The application itself runs as your regular user. The Debian package integrates the application icon and launcher; its installer also supplies an application-specific AppArmor policy on supported systems so Chromium can create its sandbox namespaces. Do not launch Harbor DB with `sudo` or `--no-sandbox`.
@@ -43,23 +43,23 @@ The application itself runs as your regular user. The Debian package integrates 
 For an AppImage:
 
 ```sh
-chmod +x Harbor-DB-0.1.6-linux-x86_64.AppImage
-./Harbor-DB-0.1.6-linux-x86_64.AppImage
+chmod +x Harbor-DB-0.1.7-linux-x86_64.AppImage
+./Harbor-DB-0.1.7-linux-x86_64.AppImage
 ```
 
 AppImages need compatible FUSE support and permission to create Chromium sandbox namespaces. On Ubuntu systems that restrict those namespaces, prefer the DEB, which installs the policy for its fixed executable path. The development setup command below grants access to development/unpacked executables only; it does not grant arbitrary AppImages permission. Do not disable the Chromium sandbox or change a system-wide namespace restriction to work around installation.
 
 ## Publishing a version
 
-The repository's [Release Harbor DB workflow](../.github/workflows/release.yml) starts when a `v*` tag is pushed. The tag must exactly match `v` followed by `package.json`'s version. Keep `package-lock.json` synchronized with that version. The current release tag is `v0.1.6`.
+The repository's [Release Harbor DB workflow](../.github/workflows/release.yml) starts when a `v*` tag is pushed. The tag must exactly match `v` followed by `package.json`'s version. Keep `package-lock.json` synchronized with that version. The current release tag is `v0.1.7`.
 
 Before tagging, verify a clean `npm ci`, then run the build and required checks. Installing into an existing `node_modules` tree alone does not verify optional cross-platform dependency entries in the lockfile.
 
 After reviewing and committing the release changes on the intended commit:
 
 ```sh
-git tag -a v0.1.6 -m "Harbor DB 0.1.6"
-git push origin v0.1.6
+git tag -a v0.1.7 -m "Harbor DB 0.1.7"
+git push origin v0.1.7
 ```
 
 The workflow uses Node.js 24, `npm ci`, and the pinned Electron/builder versions. It runs the verification workflow and builds the seven installers in parallel on `ubuntu-24.04`, `macos-15-intel`, `macos-15` (ARM64), and `windows-2025`. The architectures match [GitHub's hosted-runner labels](https://docs.github.com/en/actions/reference/runners/github-hosted-runners). Build jobs have read-only repository permission and call electron-builder with `--publish never`; signing credentials are not needed for the current configuration.

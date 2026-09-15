@@ -296,6 +296,19 @@ for (const engine of ['postgres', 'mariadb'] as const) {
       await expect(page.getByRole('button', { name: 'Delete selected', exact: true })).toHaveCount(0)
       await grid(page).getByRole('cell', { name: 'row-001', exact: true }).dblclick()
       await expect(page.getByRole('dialog', { name: 'Edit label', exact: true })).toHaveCount(0)
+      const duplicateEditor = await typeSql(
+        page,
+        `SELECT id AS duplicate, (3 - id) AS duplicate FROM ${target} WHERE id IN (1, 2) ORDER BY id;`,
+      )
+      await duplicateEditor.press('ControlOrMeta+Enter')
+      const duplicateSort = grid(page).getByRole('button', { name: 'Sort duplicate ascending', exact: true })
+      await expect(duplicateSort).toHaveCount(2)
+      await duplicateSort.nth(1).click()
+      await expect(grid(page).locator('tbody tr[aria-rowindex]').first().locator('td').nth(2)).toHaveText('2')
+      await expect(duplicateSort.nth(0)).toHaveAttribute('aria-pressed', 'false')
+      await expect(duplicateSort.nth(1)).toHaveAttribute('aria-pressed', 'true')
+      await grid(page).getByRole('button', { name: 'Sort duplicate descending', exact: true }).nth(1).click()
+      await expect(grid(page).locator('tbody tr[aria-rowindex]').first().locator('td').nth(2)).toHaveText('1')
       await page.getByRole('button', { name: 'Return to table', exact: true }).click()
       await page.getByRole('dialog').getByRole('button', { name: 'Load table query', exact: true }).click()
       await expect(page.getByRole('button', { name: 'Delete selected', exact: true })).toBeDisabled()

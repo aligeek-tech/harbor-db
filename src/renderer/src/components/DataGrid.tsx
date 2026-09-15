@@ -74,13 +74,16 @@ export function DataGrid({
   selectionDisabled = false,
   deleteDisabled = false,
 }: GridProps) {
-  const [localSort, setLocalSort] = useState<{ column: string; direction: 'asc' | 'desc' }>()
+  const [localSort, setLocalSort] = useState<{ column: string; index: number; direction: 'asc' | 'desc' }>()
   const remoteSort = serverSort || !!onSort
   const activeSort = remoteSort ? sort : localSort
-  const chooseSort = (column: string, direction: 'asc' | 'desc') => {
+  const chooseSort = (index: number, direction: 'asc' | 'desc') => {
+    const column = set.columns[index].name
     if (remoteSort) onSort?.(column, direction)
-    else setLocalSort({ column, direction })
+    else setLocalSort({ column, index, direction })
   }
+  const isSorted = (index: number) =>
+    activeSort?.column === set.columns[index].name && (remoteSort || localSort?.index === index)
   const inspector = useApp((s) => s.workspace.settings.inspectorOpen)
   const density = useApp((s) => s.workspace.settings.density)
   const [filter, setFilter] = useState('')
@@ -128,8 +131,8 @@ export function DataGrid({
         )
         .sort((a, b) => {
           if (remoteSort || !localSort) return 0
-          const index = set.columns.findIndex((column) => column.name === localSort.column)
-          if (index < 0) return 0
+          const index = localSort.index
+          if (set.columns[index]?.name !== localSort.column) return 0
           return (
             compareCells(
               a.values[index],
@@ -494,8 +497,8 @@ export function DataGrid({
                   <th
                     key={c.id}
                     aria-sort={
-                      activeSort?.column === set.columns[Number(c.id)].name
-                        ? activeSort.direction === 'asc'
+                      isSorted(Number(c.id))
+                        ? activeSort?.direction === 'asc'
                           ? 'ascending'
                           : 'descending'
                         : 'none'
@@ -521,11 +524,8 @@ export function DataGrid({
                         disabled={remoteSort && !onSort}
                         onClick={() =>
                           chooseSort(
-                            set.columns[Number(c.id)].name,
-                            activeSort?.column === set.columns[Number(c.id)].name &&
-                              activeSort.direction === 'asc'
-                              ? 'desc'
-                              : 'asc',
+                            Number(c.id),
+                            isSorted(Number(c.id)) && activeSort?.direction === 'asc' ? 'desc' : 'asc',
                           )
                         }
                       >
@@ -539,12 +539,9 @@ export function DataGrid({
                             type="button"
                             aria-label={`Sort ${set.columns[Number(c.id)].name} ${direction === 'asc' ? 'ascending' : 'descending'}`}
                             title={`${direction === 'asc' ? 'Ascending' : 'Descending'} · ${remoteSort ? 'server-side sort' : 'loaded rows only'}`}
-                            aria-pressed={
-                              activeSort?.column === set.columns[Number(c.id)].name &&
-                              activeSort.direction === direction
-                            }
+                            aria-pressed={isSorted(Number(c.id)) && activeSort?.direction === direction}
                             disabled={remoteSort && !onSort}
-                            onClick={() => chooseSort(set.columns[Number(c.id)].name, direction)}
+                            onClick={() => chooseSort(Number(c.id), direction)}
                           >
                             {direction === 'asc' ? <ArrowUp /> : <ArrowDown />}
                           </button>

@@ -1,6 +1,6 @@
 {
   "name": "harbor-db",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "A local desktop workspace for PostgreSQL, MariaDB, MongoDB, and Redis",
   "homepage": "https://github.com/aligeek-tech/harbor-db",
   "repository": {
