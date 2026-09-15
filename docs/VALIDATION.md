@@ -1,6 +1,6 @@
 # Validation record
 
-Validation date: 2026-09-14. These results describe the local host, generated fixtures and GitHub release jobs below. They do not establish behavior on every operating-system version, server version or network condition.
+Runtime validation date: 2026-09-14. Public v0.1.1 downloads verified on 2026-09-15. These results describe the local host, generated fixtures and GitHub release jobs below. They do not establish behavior on every operating-system version, server version or network condition.
 
 ## Host and fixtures
 
@@ -89,6 +89,23 @@ Six new backend regressions run against ordinary PostgreSQL 17 and a dedicated T
 The real Electron flow uses two generated databases with identically named hypertables and continuous aggregates but distinct rows. Both blank-server and explicitly configured database profiles preserve their targets. A schema containing 305 user routines proves that tables appear before routines and **Show more** reveals objects beyond the first 300; extension helpers and internal schemas are absent. The existing PostgreSQL server, configured PostgreSQL and MariaDB explorer tests also passed. The final Timescale flow was repeated against the optional Compose fixture and checked the visible version against the main process's version. Page identity, renderer console, error-overlay and actual sandbox checks passed at 1440×900; the new paging controls were not separately reviewed at compact widths.
 
 The Timescale fixture uses loopback-only port 15433, a digest-pinned official image, temporary storage and generated test databases. No user database was inspected or changed. Screenshot evidence is generated outside the repository. This records local verification; the release workflow additionally enables the Timescale integration and Electron tests before publishing installers.
+
+## Published v0.1.1
+
+The [release workflow](https://github.com/aligeek-tech/harbor-db/actions/runs/34865879323) passed at commit `6dec1bd9fd923dd2de365a3dc9e07bc7744ae778` and published [Harbor DB v0.1.1](https://github.com/aligeek-tech/harbor-db/releases/tag/v0.1.1) on 2026-09-14.
+
+- ESLint, strict TypeScript and production compilation passed.
+- Unit suite: 75 passed; 64 integration/benchmark cases intentionally skipped.
+- Integration-enabled suite, including real TimescaleDB: 138 passed; one opt-in benchmark skipped.
+- Electron UI suite: 13 passed; the packaged-only case skipped in this mode. Separate packaged Linux acceptance: one passed.
+- Windows and macOS unpacked verification and all four native installer build jobs passed.
+- Seven installers and `SHA256SUMS` are public for Linux x64, Windows x64, Intel Mac and Apple Silicon.
+
+Public download verification on 2026-09-15 confirmed HTTP 200 and matching Content-Length for every installer. The downloaded checksum file matched GitHub's asset digest, and all seven installer checksums matched GitHub's recorded asset digests; the full installers were not downloaded again. The published release and all assets were also verified in Chrome.
+
+The final local Electron suite passed all 13 UI tests. Tests now wait for the initial document load and completed renderer bootstrap before seeding and reloading their isolated workspaces, and close the app through Playwright's normal lifecycle. This fixes the startup race that blocked the first release attempt; the UI assertions and sandbox checks remain enabled. No user database was accessed.
+
+Platform signing and interactive macOS/Windows validation limitations remain as described below and in [RELEASE.md](RELEASE.md). This evidence update does not change the published tag or binary assets.
 
 ## Published v0.1.0
 
