@@ -1727,7 +1727,7 @@ button[data-variant='default'] kbd {
   }
 }
 
-/* Keep the connection actions reachable while advanced transport fields scroll. */
+/* Keep connection feedback and actions together while transport fields scroll. */
 [data-slot='dialog-content'].connection-dialog {
   gap: 14px;
 }
@@ -1740,13 +1740,28 @@ button[data-variant='default'] kbd {
 .connection-dialog .advanced-options[open] summary {
   margin-bottom: 12px;
 }
-.connection-dialog .dialog-actions {
+.connection-dialog-footer {
   position: sticky;
+  z-index: 1;
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid var(--line);
   bottom: -24px;
   background: var(--panel);
   padding-top: 12px;
   padding-bottom: 12px;
   margin-bottom: -12px;
+}
+.connection-dialog-footer .dialog-actions {
+  border-top: 0;
+  padding-top: 0;
+}
+.connection-dialog-footer .form-status {
+  max-height: min(180px, 25vh);
+  overflow: auto;
+}
+.connection-dialog-footer .form-status svg {
+  flex-shrink: 0;
 }
 .connection-engine-choice [data-state='on'] {
   color: var(--accent);

@@ -319,7 +319,10 @@ describe.skipIf(!integration)('real PostgreSQL and MariaDB integration', () => {
         )
         expect(failed.state).toBe('failed')
         expect(failed.error).not.toContain('wrong_private_password')
+        expect(failed.error).not.toContain('SQL character')
         expect(service.status(profile.id).state).toBe('connected')
+        if (profile.engine === 'postgres')
+          await expect(query(profile, 'SELEC 1')).rejects.toThrow('(SQL character 1)')
       })
       it('reports dropped sessions without silently retrying', async () => {
         const sql = profile.engine === 'postgres' ? 'SELECT pg_backend_pid()' : 'SELECT CONNECTION_ID()'

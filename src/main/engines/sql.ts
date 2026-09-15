@@ -113,7 +113,7 @@ function readableError(error: unknown, secrets?: Secrets): Error {
   )
     message +=
       ' Connection lost. The last write may have reached the server; inspect its outcome before retrying.'
-  if (typeof error === 'object' && error && 'position' in error)
+  if (typeof error === 'object' && error && 'position' in error && /^[1-9]\d*$/.test(String(error.position)))
     message += ` (SQL character ${String(error.position)})`
   return Object.assign(new Error(message), { code })
 }

@@ -106,7 +106,7 @@ export function ConnectionDialog({ initial, onClose }: { initial?: ConnectionPro
           text:
             status.state === 'connected'
               ? `Connection successful · ${status.version || engineNames[profile.engine]} · ${Math.round(status.durationMs || 0)} ms\n${status.transport || 'Direct connection'}`
-              : status.error || 'Connection failed',
+              : `Connection failed: ${status.error || 'Could not connect to the server.'}`,
         })
         return
       }
@@ -121,13 +121,16 @@ export function ConnectionDialog({ initial, onClose }: { initial?: ConnectionPro
           useApp.getState().setStatus(saved.id, status)
           if (status.state !== 'connected') {
             setProfile(saved)
-            setFeedback({ ok: false, text: `Profile saved. ${status.error || 'Could not connect.'}` })
+            setFeedback({
+              ok: false,
+              text: `Profile saved. Connection failed: ${status.error || 'Could not connect to the server.'}`,
+            })
             return
           }
         } catch (e) {
           useApp.getState().setStatus(saved.id, { state: 'failed', error: errorText(e) })
           setProfile(saved)
-          setFeedback({ ok: false, text: `Profile saved. ${errorText(e)}` })
+          setFeedback({ ok: false, text: `Profile saved. Connection failed: ${errorText(e)}` })
           return
         }
       }
@@ -240,7 +243,10 @@ export function ConnectionDialog({ initial, onClose }: { initial?: ConnectionPro
               autoComplete="new-password"
               value={password}
               placeholder={initial?.hasPassword ? 'Leave blank to keep saved password' : 'Enter password'}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value)
+                setFeedback(null)
+              }}
             />
           </Field>
           {profile.engine === 'redis' ? (
@@ -528,7 +534,10 @@ export function ConnectionDialog({ initial, onClose }: { initial?: ConnectionPro
                       type="password"
                       autoComplete="new-password"
                       value={sshPassword}
-                      onChange={(e) => setSshPassword(e.target.value)}
+                      onChange={(e) => {
+                        setSshPassword(e.target.value)
+                        setFeedback(null)
+                      }}
                     />
                   </Field>
                   <Field className="full-field">
@@ -538,7 +547,10 @@ export function ConnectionDialog({ initial, onClose }: { initial?: ConnectionPro
                       type="password"
                       autoComplete="new-password"
                       value={passphrase}
-                      onChange={(e) => setPassphrase(e.target.value)}
+                      onChange={(e) => {
+                        setPassphrase(e.target.value)
+                        setFeedback(null)
+                      }}
                     />
                   </Field>
                 </FieldGroup>
@@ -546,35 +558,38 @@ export function ConnectionDialog({ initial, onClose }: { initial?: ConnectionPro
             )}
           </FieldGroup>
         </details>
-        {feedback && (
-          <div
-            className={`form-status ${feedback.ok ? 'success' : 'danger'}`}
-            role={feedback.ok ? 'status' : 'alert'}
-          >
-            {feedback.ok ? <CheckCircle2 /> : <ShieldAlert />}
-            <p>{feedback.text}</p>
-          </div>
-        )}
         {!isDesktop && (
           <p className="field-note warning">
             Browser preview · connections and secure persistence require the Electron desktop app.
           </p>
         )}
-        <div className="dialog-actions">
-          <Button
-            className="test-connection"
-            variant="outline"
-            disabled={!!busy}
-            onClick={() => void action('test')}
-          >
-            {busy === 'test' ? <LoaderCircle className="spin" /> : <Plug />}Test connection
-          </Button>
-          <Button variant="outline" disabled={!!busy} onClick={() => void action('save')}>
-            {busy === 'save' ? <LoaderCircle className="spin" /> : <Save />}Save
-          </Button>
-          <Button disabled={!!busy} onClick={() => void action('connect')}>
-            {busy === 'connect' ? <LoaderCircle className="spin" /> : <Plug />}Save and connect
-          </Button>
+        <div className="connection-dialog-footer">
+          {feedback && (
+            <div
+              className={`form-status ${feedback.ok ? 'success' : 'danger'}`}
+              role={feedback.ok ? 'status' : 'alert'}
+              aria-atomic="true"
+            >
+              {feedback.ok ? <CheckCircle2 /> : <ShieldAlert />}
+              <p>{feedback.text}</p>
+            </div>
+          )}
+          <div className="dialog-actions">
+            <Button
+              className="test-connection"
+              variant="outline"
+              disabled={!!busy}
+              onClick={() => void action('test')}
+            >
+              {busy === 'test' ? <LoaderCircle className="spin" /> : <Plug />}Test connection
+            </Button>
+            <Button variant="outline" disabled={!!busy} onClick={() => void action('save')}>
+              {busy === 'save' ? <LoaderCircle className="spin" /> : <Save />}Save
+            </Button>
+            <Button disabled={!!busy} onClick={() => void action('connect')}>
+              {busy === 'connect' ? <LoaderCircle className="spin" /> : <Plug />}Save and connect
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
