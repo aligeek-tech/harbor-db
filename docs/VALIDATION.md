@@ -171,3 +171,23 @@ The packaged Linux acceptance test connects through all four bundled drivers, re
 The initial v0.1.5 release workflow stopped at `npm ci` because the older local npm had omitted two bundled optional WASM dependencies from the lockfile. No v0.1.5 installers were published. The lockfile was repaired in an empty directory with CI's npm 11.19.0, preserving every existing dependency version, for release v0.1.6.
 
 The v0.1.6 publication run was cancelled before publication after final review identified duplicate-name result columns sharing a sort target. Version 0.1.7 identifies local sort columns by position and name, and the PostgreSQL/MariaDB desktop regressions sort the second of two identically named columns in both directions. No v0.1.6 installers were published.
+
+## Published v0.1.7
+
+The [release workflow](https://github.com/aligeek-tech/harbor-db/actions/runs/34980894455) passed at commit `3a924779b0edfeefb8282ee4dda8864474a54544` and published [Harbor DB v0.1.7](https://github.com/aligeek-tech/harbor-db/releases/tag/v0.1.7) on 2026-09-15.
+
+Lint, strict TypeScript and production compilation passed. The unit suite passed 93 tests; the integration-enabled suite passed 166 tests with only the opt-in benchmark skipped. All 18 desktop tests passed, with the packaged case run separately and passing. PostgreSQL and MariaDB desktop tests verify that sorting the second of two identically named columns uses its own values and indicator. Windows/macOS unpacked checks and all four native installer build jobs passed.
+
+All seven installer links returned HTTP 200 without authentication and the expected Content-Length. The downloaded `SHA256SUMS` file matched GitHub's recorded asset digest, and every installer checksum in that file matched GitHub's recorded digest for the corresponding uploaded binary. The full installers were not downloaded again. Published tags and binaries were not modified during this verification.
+
+| Installer                               |     Bytes | Public download / checksum |
+| --------------------------------------- | --------: | -------------------------- |
+| `Harbor-DB-0.1.7-linux-amd64.deb`       | 124808452 | HTTP 200 / matched         |
+| `Harbor-DB-0.1.7-linux-x86_64.AppImage` | 162520367 | HTTP 200 / matched         |
+| `Harbor-DB-0.1.7-mac-arm64.dmg`         | 163785119 | HTTP 200 / matched         |
+| `Harbor-DB-0.1.7-mac-arm64.zip`         | 163903653 | HTTP 200 / matched         |
+| `Harbor-DB-0.1.7-mac-x64.dmg`           | 169846431 | HTTP 200 / matched         |
+| `Harbor-DB-0.1.7-mac-x64.zip`           | 169975299 | HTTP 200 / matched         |
+| `Harbor-DB-0.1.7-win-x64.exe`           | 137949892 | HTTP 200 / matched         |
+
+Interactive Windows/macOS workflows and Atlas/SRV or replica-set deployments remain unverified; the local MongoDB and TLS fixture coverage is described above.
