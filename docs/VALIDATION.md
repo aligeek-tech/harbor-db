@@ -90,6 +90,18 @@ The real Electron flow uses two generated databases with identically named hyper
 
 The Timescale fixture uses loopback-only port 15433, a digest-pinned official image, temporary storage and generated test databases. No user database was inspected or changed. Screenshot evidence is generated outside the repository. This records local verification; the release workflow additionally enables the Timescale integration and Electron tests before publishing installers.
 
+## Published v0.1.4
+
+The [release workflow](https://github.com/aligeek-tech/harbor-db/actions/runs/34972475638) passed at commit `9fdc281aa797123c097a1b421d61781d51e0f0a9` and published [Harbor DB v0.1.4](https://github.com/aligeek-tech/harbor-db/releases/tag/v0.1.4) on 2026-09-15. It passed lint, type checking, production compilation, 76 unit tests, 140 integration-enabled tests, all 17 Electron UI tests, separate packaged Linux acceptance, and native installer builds for all four platform/architecture combinations. The opt-in benchmark was not run.
+
+The Timescale regression creates a composite-key hypertable whose physical column order differs from its primary-key index order, fills multiple chunks, and compresses them. The default preview returns its requested row limit without an ORDER BY; EXPLAIN confirms there is no Sort or Incremental Sort node. Explicit sorting still works, and ordinary PostgreSQL tables use index key order. Composite-key updates are verified on a fresh uncompressed chunk. The existing SELECT FOR UPDATE restriction on compressed Timescale tuples remains; row locking was not weakened.
+
+Read-only diagnosis of the reported production table compared EXPLAIN plans without executing the original expensive sort. The replacement unsorted preview query returned 200 rows in 282 ms in one bounded read-only execution. This is a single SQL timing, not an end-to-end application benchmark or guarantee for other tables. No production data, indexes, permissions, or database configuration were changed.
+
+Electron validation used isolated application data and local Timescale fixtures at 1440×900 and 1024×700. It verified the unsorted-preview label, switching to explicit sorting, both server and fixed-database targets, renderer health, page identity, and the kernel sandbox. Screenshots outside the repository confirm the wrapping footer and pagination remain visible. The Browser skill was unavailable, so the repository's Electron Playwright workflow was used. Interactive macOS/Windows validation was not performed.
+
+All seven installer URLs returned unauthenticated HTTP 200 with the expected Content-Length. The downloaded SHA256SUMS matched GitHub's asset digest, and every installer checksum matched its uploaded asset digest. Full published installers were not downloaded again. Published tags and binaries remain unchanged by this evidence update; existing signing limitations still apply.
+
 ## Published v0.1.3
 
 The [release workflow](https://github.com/aligeek-tech/harbor-db/actions/runs/34958387874) passed at commit `e19302609e08984d552089b4fa72380d2fceb503` and published [Harbor DB v0.1.3](https://github.com/aligeek-tech/harbor-db/releases/tag/v0.1.3) on 2026-09-15.
