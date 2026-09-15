@@ -90,6 +90,18 @@ The real Electron flow uses two generated databases with identically named hyper
 
 The Timescale fixture uses loopback-only port 15433, a digest-pinned official image, temporary storage and generated test databases. No user database was inspected or changed. Screenshot evidence is generated outside the repository. This records local verification; the release workflow additionally enables the Timescale integration and Electron tests before publishing installers.
 
+## Published v0.1.3
+
+The [release workflow](https://github.com/aligeek-tech/harbor-db/actions/runs/34958387874) passed at commit `e19302609e08984d552089b4fa72380d2fceb503` and published [Harbor DB v0.1.3](https://github.com/aligeek-tech/harbor-db/releases/tag/v0.1.3) on 2026-09-15.
+
+The release passed lint, type checking, production compilation, 75 unit tests, 138 integration-enabled tests, all 17 Electron UI tests, separate packaged Linux acceptance, and native installer builds for all four platform/architecture combinations. Integration and packaged-only tests were skipped only in their non-applicable modes; the opt-in benchmark was not rerun.
+
+The new second-launch regression failed against the previous startup code: the secondary process created a window and did not exit within 15 seconds. With the fix, it exits successfully without creating a window, sends the real single-instance handoff, and shows the hidden primary window. The primary retains its isolated workspace state and one window, with no renderer errors. The source test passed locally and under CI's Xvfb display.
+
+Local cross-package checks also passed in both orders using the built 0.1.3 AppImage and the executable extracted from the 0.1.3 Debian package. These checks used temporary XDG configuration directories, verified Chromium's kernel sandbox, and did not install the Debian package or touch the user's workspace. Full macOS/Windows interactive second-launch testing was not performed.
+
+All seven installer URLs returned unauthenticated HTTP 200 with the expected Content-Length. The downloaded `SHA256SUMS` matched GitHub's recorded asset digest, and each installer checksum matched its uploaded asset digest. Full published installers were not downloaded again. The published tag and binary assets remain unchanged by this evidence update. Existing signing limitations still apply.
+
 ## Published v0.1.2
 
 The [release workflow](https://github.com/aligeek-tech/harbor-db/actions/runs/34954102582) passed at commit `b30737089e9f756dfd24880c8437b27b7f8a4999` and published [Harbor DB v0.1.2](https://github.com/aligeek-tech/harbor-db/releases/tag/v0.1.2) on 2026-09-15. [Issue #1](https://github.com/aligeek-tech/harbor-db/issues/1) was closed as completed after publication and download verification.
