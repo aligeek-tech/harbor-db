@@ -37,7 +37,10 @@ export function buildTableQuery(
   dialect: SqlDialect,
 ): TableQuery {
   const columns = new Set(structure.columns.map((column) => column.name))
-  const keys = structure.columns.filter((column) => column.primaryKey).map((column) => column.name)
+  const keys = structure.columns
+    .filter((column) => column.primaryKey)
+    .sort((a, b) => (a.primaryKeyPosition ?? Infinity) - (b.primaryKeyPosition ?? Infinity))
+    .map((column) => column.name)
   const fragments: Fragment[] = [`SELECT * FROM ${qualifiedName(input.schema, input.table, dialect)}`]
   if (input.filter) {
     if (!columns.has(input.filter.column)) throw new Error('Filter column is not in this table.')
@@ -52,7 +55,13 @@ export function buildTableQuery(
         " ESCAPE '!'",
       )
   }
-  const sorts = input.sort ? [input.sort, ...keys.filter((key) => key !== input.sort)] : keys
+  // A global primary-key sort can scan/decompress every hypertable chunk before
+  // LIMIT returns any rows. Keep previews unsorted unless the user requests a sort.
+  const sorts = input.sort
+    ? [input.sort, ...keys.filter((key) => key !== input.sort)]
+    : structure.isHypertable
+      ? []
+      : keys
   if (sorts.some((column) => !columns.has(column))) throw new Error('Sort column is not in this table.')
   if (sorts.length)
     fragments.push(

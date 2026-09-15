@@ -706,6 +706,11 @@ export function TableBrowser({
               </span>
             )}
             <span>{runtime?.result?.durationMs.toFixed(1)} ms</span>
+            {structure?.isHypertable && !sort && (
+              <span title="No automatic sort across the full history. Rows and offset pages may change order. Click a column header to sort; sorting large histories can be expensive.">
+                Unsorted preview · row order may change
+              </span>
+            )}
             <span>
               {editable
                 ? 'Double-click a cell to stage an edit'

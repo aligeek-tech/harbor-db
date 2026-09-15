@@ -916,7 +916,12 @@ export class SqlService {
       const name = qualifiedName(schema, input.table, dialect)
       const columns = await this.metadata(
         input.connectionId,
-        `SELECT a.attname AS name,format_type(a.atttypid,a.atttypmod) AS type,NOT a.attnotnull AS nullable,pg_get_expr(d.adbin,d.adrelid) AS default_value,EXISTS(SELECT 1 FROM pg_index i WHERE i.indrelid=a.attrelid AND i.indisprimary AND a.attnum=ANY(i.indkey)) AS primary_key FROM pg_attribute a LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum WHERE a.attrelid=$1::regclass AND a.attnum>0 AND NOT a.attisdropped ORDER BY a.attnum`,
+        `SELECT a.attname AS name,format_type(a.atttypid,a.atttypmod) AS type,NOT a.attnotnull AS nullable,pg_get_expr(d.adbin,d.adrelid) AS default_value,
+          (SELECT k.ordinality FROM pg_index i
+           CROSS JOIN LATERAL unnest(i.indkey) WITH ORDINALITY AS k(attnum,ordinality)
+           WHERE i.indrelid=a.attrelid AND i.indisprimary AND k.attnum=a.attnum
+             AND k.ordinality <= i.indnkeyatts) AS primary_key_position
+         FROM pg_attribute a LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum WHERE a.attrelid=$1::regclass AND a.attnum>0 AND NOT a.attisdropped ORDER BY a.attnum`,
         [name],
         database,
       )
@@ -932,13 +937,39 @@ export class SqlService {
         [name],
         database,
       )
+      // Check extension ownership before referring to optional Timescale views.
+      const hypertableView = await this.metadata(
+        input.connectionId,
+        `SELECT c.oid FROM pg_catalog.pg_extension e
+         JOIN pg_catalog.pg_depend d ON d.refclassid='pg_catalog.pg_extension'::regclass
+           AND d.refobjid=e.oid AND d.deptype='e' AND d.classid='pg_catalog.pg_class'::regclass
+         JOIN pg_catalog.pg_class c ON c.oid=d.objid
+         JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+         WHERE e.extname='timescaledb' AND n.nspname='timescaledb_information'
+           AND c.relname='hypertables' AND pg_catalog.has_schema_privilege(n.oid,'USAGE')
+           AND pg_catalog.has_table_privilege(c.oid,'SELECT')`,
+        [],
+        database,
+      )
+      const hypertable = hypertableView.length
+        ? await this.metadata(
+            input.connectionId,
+            'SELECT hypertable_name FROM timescaledb_information.hypertables WHERE hypertable_schema=$1 AND hypertable_name=$2',
+            [schema, input.table],
+            database,
+          )
+        : []
       const result: TableStructure = {
+        isHypertable: hypertable.length > 0,
         columns: columns.map((row) => ({
           name: text(row.name),
           type: text(row.type),
           nullable: ['t', 'true'].includes(text(row.nullable)),
           defaultValue: row.default_value === null ? null : text(row.default_value),
-          primaryKey: ['t', 'true'].includes(text(row.primary_key)),
+          primaryKey: row.primary_key_position != null,
+          ...(row.primary_key_position != null
+            ? { primaryKeyPosition: Number(row.primary_key_position) }
+            : {}),
         })),
         indexes: indexes.map((row) => ({ name: text(row.name), definition: text(row.definition) })),
         constraints: constraints.map((row) => ({ name: text(row.name), definition: text(row.definition) })),
@@ -1009,7 +1040,11 @@ export class SqlService {
     result.tableQuery = tableQuery
     for (const set of result.sets)
       set.columns = set.columns.map((col) => ({ ...col, key: keys.includes(col.name) }))
-    if (!keys.length)
+    if (structure.isHypertable && !input.sort)
+      result.messages.push(
+        'Unsorted hypertable preview: row order and offset page boundaries may change. Choose a column to sort; sorting large histories can be expensive.',
+      )
+    else if (!keys.length)
       result.messages.push('No primary key: rows are read-only and pagination order may change.')
     else
       result.messages.push(

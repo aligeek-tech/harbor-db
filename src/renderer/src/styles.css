@@ -952,11 +952,12 @@ button[data-variant='default'] kbd {
 }
 .results-footer {
   display: flex;
+  flex-wrap: wrap;
   gap: 15px;
   align-items: center;
-  height: 33px;
+  min-height: 33px;
   border-top: 1px solid var(--line);
-  padding: 0 12px;
+  padding: 4px 12px;
   font-size: 11px;
   color: var(--muted);
   flex-shrink: 0;

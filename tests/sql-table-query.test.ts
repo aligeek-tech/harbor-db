@@ -37,6 +37,28 @@ const baseInput: TableInput = {
 const tricky = "O'Reilly \\ path\n%_!α😀"
 
 describe('structured table query generation', () => {
+  it('uses index key order for ordinary tables and skips automatic hypertable sorting', () => {
+    const composite: TableStructure = {
+      ...structure,
+      columns: [
+        { ...structure.columns[0], name: 'tick_id', primaryKeyPosition: 3 },
+        { ...structure.columns[0], name: 'market', primaryKeyPosition: 1 },
+        { ...structure.columns[0], name: 'time', primaryKeyPosition: 2 },
+      ],
+    }
+    const input = { ...baseInput, sort: undefined }
+    expect(buildTableQuery(input, composite, 'postgres').sql).toContain(
+      'ORDER BY "market" DESC, "time" DESC, "tick_id" DESC',
+    )
+    const hypertable = { ...composite, isHypertable: true }
+    const preview = buildTableQuery(input, hypertable, 'postgres')
+    expect(preview.sql).not.toContain('ORDER BY')
+    expect(preview.editorSql).not.toContain('ORDER BY')
+    expect(preview.parameters).toEqual([25, 3])
+    expect(buildTableQuery({ ...input, sort: 'time' }, hypertable, 'postgres').sql).toContain(
+      'ORDER BY "time" DESC, "market" DESC, "tick_id" DESC',
+    )
+  })
   for (const dialect of ['postgres', 'mariadb'] as const) {
     it(`${dialect}: retains placeholder-shaped identifiers and parameter values verbatim`, () => {
       const input = {

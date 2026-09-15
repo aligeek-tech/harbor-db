@@ -8,16 +8,16 @@ A local Electron workspace for PostgreSQL, MariaDB and standalone Redis. Connect
 
 ## Downloads
 
-Install Harbor DB without Node.js, npm, or a source checkout. Download version **0.1.3** for your computer:
+Install Harbor DB without Node.js, npm, or a source checkout. Download version **0.1.4** for your computer:
 
 | Platform                   | Downloads                                                                                                                                                                                                                                           |
 | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Linux (64-bit Intel/AMD)   | [Debian / Ubuntu (.deb)](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.3/Harbor-DB-0.1.3-linux-amd64.deb) · [AppImage](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.3/Harbor-DB-0.1.3-linux-x86_64.AppImage) |
-| Windows (64-bit Intel/AMD) | [Setup (.exe)](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.3/Harbor-DB-0.1.3-win-x64.exe)                                                                                                                                      |
-| macOS 13+ (Apple Silicon)  | [Installer (.dmg)](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.3/Harbor-DB-0.1.3-mac-arm64.dmg) · [ZIP](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.3/Harbor-DB-0.1.3-mac-arm64.zip)                      |
-| macOS 13+ (Intel)          | [Installer (.dmg)](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.3/Harbor-DB-0.1.3-mac-x64.dmg) · [ZIP](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.3/Harbor-DB-0.1.3-mac-x64.zip)                          |
+| Linux (64-bit Intel/AMD)   | [Debian / Ubuntu (.deb)](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.4/Harbor-DB-0.1.4-linux-amd64.deb) · [AppImage](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.4/Harbor-DB-0.1.4-linux-x86_64.AppImage) |
+| Windows (64-bit Intel/AMD) | [Setup (.exe)](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.4/Harbor-DB-0.1.4-win-x64.exe)                                                                                                                                      |
+| macOS 13+ (Apple Silicon)  | [Installer (.dmg)](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.4/Harbor-DB-0.1.4-mac-arm64.dmg) · [ZIP](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.4/Harbor-DB-0.1.4-mac-arm64.zip)                      |
+| macOS 13+ (Intel)          | [Installer (.dmg)](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.4/Harbor-DB-0.1.4-mac-x64.dmg) · [ZIP](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.4/Harbor-DB-0.1.4-mac-x64.zip)                          |
 
-[All releases and release notes](https://github.com/aligeek-tech/harbor-db/releases/latest) · [SHA-256 checksums](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.3/SHA256SUMS)
+[All releases and release notes](https://github.com/aligeek-tech/harbor-db/releases/latest) · [SHA-256 checksums](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.4/SHA256SUMS)
 
 Windows builds are unsigned; macOS builds use an ad-hoc signature and are not notarized. Your operating system may require an explicit installation approval. See [installation and verification instructions](docs/RELEASE.md), including the recommended `.deb` installation on Ubuntu.
 
@@ -87,6 +87,8 @@ The Timescale image is pinned to version 2.27.1 and its digest. Its storage is t
 6. Use **Save query** or Cmd/Ctrl+S in a query or table editor to save the displayed SQL to **Saved queries**. Opening a saved query restores its text and PostgreSQL database target without executing it; saving from a table keeps the table tab's name. History also retains the PostgreSQL database target. You can also export selected rows/loaded results. Connection imports show a preview and assign new IDs instead of overwriting existing profiles.
 
 Read-only is initially enabled, including newly designated production profiles. Change it deliberately in the connection dialog to enable edits. Database read-only permissions are still essential: the application safeguard prevents accidental writes and is not a security boundary against hostile databases or privileged stored routines.
+
+TimescaleDB hypertables open as limited, unsorted previews to avoid sorting the full history before displaying rows. Preview row order and offset pages may change; click a column header to request a sort. Sorting large histories can be expensive.
 
 PostgreSQL discovery includes TimescaleDB hypertables and continuous aggregates. Extension-owned helper routines and internal Timescale schemas, chunks and materialization tables are omitted from the explorer; your own routines remain visible. Tables and views appear before other objects. Large schemas initially show 300 objects and provide **Show more** to reveal the rest. Filtering searches all loaded objects, including those beyond the first page.
 

@@ -114,8 +114,10 @@ export interface ColumnInfo {
   nullable: boolean
   defaultValue: string | null
   primaryKey: boolean
+  primaryKeyPosition?: number
 }
 export interface TableStructure {
+  isHypertable?: boolean
   columns: ColumnInfo[]
   indexes: { name: string; definition: string }[]
   constraints: { name: string; definition: string }[]

@@ -158,5 +158,75 @@ describe.skipIf(process.env.HARBOR_TIMESCALE !== '1')('real TimescaleDB catalog 
       direction: 'asc',
     })
     expect(data.sets[0].rows.map((row) => row[1])).toEqual(['7', '11'])
+    expect(
+      await service.structure({ connectionId: limited.id, schema: 'app_data', table: 'metrics' }),
+    ).toMatchObject({ isHypertable: true })
+  })
+
+  it('previews compressed composite-key hypertables without a global sort and preserves edit identity', async () => {
+    await fixture.query(`
+      CREATE TABLE app_data.ticks (tick_id integer NOT NULL, market text NOT NULL,
+        time timestamptz NOT NULL, value integer, PRIMARY KEY (market,time,tick_id));
+      SELECT create_hypertable('app_data.ticks','time',chunk_time_interval => INTERVAL '1 day');
+      INSERT INTO app_data.ticks SELECT i, 'sample', '2025-01-01'::timestamptz + i * INTERVAL '1 hour', i
+        FROM generate_series(1,240) i;
+      ALTER TABLE app_data.ticks SET (timescaledb.compress, timescaledb.compress_segmentby='market',
+        timescaledb.compress_orderby='time DESC');
+      SELECT compress_chunk(c) FROM show_chunks('app_data.ticks') c;
+      CREATE TABLE app_data.ordered_keys (tick_id integer, market text, time timestamptz,
+        PRIMARY KEY (market,time,tick_id));
+    `)
+    const input = {
+      connectionId: profile.id,
+      sessionId: 'preview',
+      schema: 'app_data',
+      table: 'ticks',
+      offset: 0,
+      limit: 20,
+      direction: 'asc' as const,
+    }
+    const preview = await service.table(input)
+    expect(preview.sets[0].rows).toHaveLength(20)
+    expect(preview.tableQuery!.sql).not.toContain('ORDER BY')
+    expect(preview.messages.join(' ')).toContain('Unsorted hypertable preview')
+    expect(preview.sets[0].columns.filter((c) => c.key).map((c) => c.name)).toEqual([
+      'tick_id',
+      'market',
+      'time',
+    ])
+    const plan = await fixture.query('EXPLAIN (FORMAT JSON) ' + preview.tableQuery!.editorSql)
+    expect(JSON.stringify(plan.rows)).not.toContain('"Node Type":"Sort"')
+    expect(JSON.stringify(plan.rows)).not.toContain('"Node Type":"Incremental Sort"')
+    const sorted = await service.table({ ...input, sort: 'time', direction: 'desc' })
+    expect(sorted.tableQuery!.editorSql).toContain('ORDER BY "time" DESC, "market" DESC, "tick_id" DESC')
+    expect(sorted.sets[0].rows[0][0]).toBe('240')
+    const ordinary = await service.table({ ...input, table: 'ordered_keys' })
+    expect(ordinary.tableQuery!.editorSql).toContain('ORDER BY "market" ASC, "time" ASC, "tick_id" ASC')
+    const writable = { ...profile, id: profile.id + '-writer', readOnly: false }
+    await service.connect(writable, { password: config.password })
+    // Timescale rejects SELECT FOR UPDATE on compressed tuples. Verify edit
+    // identity on a fresh uncompressed chunk without weakening Harbor's locking.
+    await fixture.query("INSERT INTO app_data.ticks VALUES (241, 'sample', '2026-01-01', 241)")
+    const fresh = await service.table({
+      ...input,
+      filter: { column: 'tick_id', operator: 'equals', value: '241' },
+    })
+    const original = Object.fromEntries(
+      fresh.sets[0].columns.map((c, i) => [c.name, fresh.sets[0].rows[0][i]]),
+    )
+    expect(
+      await service.applyEdits({
+        connectionId: writable.id,
+        sessionId: 'preview-edit',
+        schema: 'app_data',
+        table: 'ticks',
+        changes: [{ kind: 'update', original, values: { value: '999' } }],
+      }),
+    ).toEqual({ affectedRows: 1 })
+    const updated = await fixture.query(
+      'SELECT value FROM app_data.ticks WHERE tick_id=$1 AND market=$2 AND time=$3',
+      [original.tick_id, original.market, original.time],
+    )
+    expect(updated.rows).toEqual([{ value: 999 }])
   })
 })

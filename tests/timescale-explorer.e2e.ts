@@ -174,6 +174,16 @@ test('Timescale hypertables and continuous aggregates remain visible while exten
         await expect(grid.getByRole('cell', { name: markers[index], exact: true }).first()).toBeVisible()
         await expect(grid.getByRole('cell', { name: markers[1 - index], exact: true })).toHaveCount(0)
         await expect(page.locator('.context-bar')).toContainText(database)
+        if (table === 'z_hypertable') {
+          await expect(
+            page.getByText('Unsorted preview · row order may change', { exact: true }),
+          ).toBeVisible()
+          await grid.getByRole('button', { name: 'time', exact: true }).click()
+          await expect(
+            page.getByText('Unsorted preview · row order may change', { exact: true }),
+          ).toHaveCount(0)
+          await expect(grid.getByRole('cell', { name: markers[index], exact: true }).first()).toBeVisible()
+        }
         await expect
           .poll(async () => {
             const state = await page.evaluate(() => window.harbor.bootstrap())
@@ -226,7 +236,15 @@ test('Timescale hypertables and continuous aggregates remain visible while exten
       state.workspace.tabs.filter((tab) => tab.connectionId === server.id && tab.kind === 'table'),
     ).toHaveLength(4)
     expect(errors).toEqual([])
+    await expect(page.locator('[data-sonner-toast]')).toHaveCount(0, { timeout: 10000 })
     await page.screenshot({ path: '/tmp/harbor-db-e2e/timescale-fixed-explorer.png' })
+    await desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(1024, 700))
+    const previewLabel = page.getByText('Unsorted preview · row order may change', { exact: true })
+    await expect(previewLabel).toBeVisible()
+    const labelBounds = await previewLabel.boundingBox()
+    expect(labelBounds!.y + labelBounds!.height).toBeLessThanOrEqual(700)
+    await expect(page.getByRole('button', { name: 'Next page', exact: true })).toBeVisible()
+    await page.screenshot({ path: '/tmp/harbor-db-e2e/timescale-preview-compact.png' })
   } finally {
     if (desktop) {
       await desktop.close()
