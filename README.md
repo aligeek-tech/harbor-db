@@ -8,16 +8,16 @@ A local Electron workspace for PostgreSQL, MariaDB and standalone Redis. Connect
 
 ## Downloads
 
-Install Harbor DB without Node.js, npm, or a source checkout. Download version **0.1.2** for your computer:
+Install Harbor DB without Node.js, npm, or a source checkout. Download version **0.1.3** for your computer:
 
 | Platform                   | Downloads                                                                                                                                                                                                                                           |
 | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Linux (64-bit Intel/AMD)   | [Debian / Ubuntu (.deb)](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.2/Harbor-DB-0.1.2-linux-amd64.deb) · [AppImage](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.2/Harbor-DB-0.1.2-linux-x86_64.AppImage) |
-| Windows (64-bit Intel/AMD) | [Setup (.exe)](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.2/Harbor-DB-0.1.2-win-x64.exe)                                                                                                                                      |
-| macOS 13+ (Apple Silicon)  | [Installer (.dmg)](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.2/Harbor-DB-0.1.2-mac-arm64.dmg) · [ZIP](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.2/Harbor-DB-0.1.2-mac-arm64.zip)                      |
-| macOS 13+ (Intel)          | [Installer (.dmg)](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.2/Harbor-DB-0.1.2-mac-x64.dmg) · [ZIP](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.2/Harbor-DB-0.1.2-mac-x64.zip)                          |
+| Linux (64-bit Intel/AMD)   | [Debian / Ubuntu (.deb)](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.3/Harbor-DB-0.1.3-linux-amd64.deb) · [AppImage](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.3/Harbor-DB-0.1.3-linux-x86_64.AppImage) |
+| Windows (64-bit Intel/AMD) | [Setup (.exe)](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.3/Harbor-DB-0.1.3-win-x64.exe)                                                                                                                                      |
+| macOS 13+ (Apple Silicon)  | [Installer (.dmg)](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.3/Harbor-DB-0.1.3-mac-arm64.dmg) · [ZIP](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.3/Harbor-DB-0.1.3-mac-arm64.zip)                      |
+| macOS 13+ (Intel)          | [Installer (.dmg)](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.3/Harbor-DB-0.1.3-mac-x64.dmg) · [ZIP](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.3/Harbor-DB-0.1.3-mac-x64.zip)                          |
 
-[All releases and release notes](https://github.com/aligeek-tech/harbor-db/releases/latest) · [SHA-256 checksums](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.2/SHA256SUMS)
+[All releases and release notes](https://github.com/aligeek-tech/harbor-db/releases/latest) · [SHA-256 checksums](https://github.com/aligeek-tech/harbor-db/releases/download/v0.1.3/SHA256SUMS)
 
 Windows builds are unsigned; macOS builds use an ad-hoc signature and are not notarized. Your operating system may require an explicit installation approval. See [installation and verification instructions](docs/RELEASE.md), including the recommended `.deb` installation on Ubuntu.
 

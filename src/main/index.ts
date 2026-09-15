@@ -22,7 +22,7 @@ const runtimeDirectory = fileURLToPath(new URL('.', import.meta.url))
 if (!app.isPackaged && process.env.HARBOR_USER_DATA) app.setPath('userData', process.env.HARBOR_USER_DATA)
 if (process.platform === 'win32') app.setAppUserModelId('dev.harbordb.desktop')
 app.setName('Harbor DB')
-if (!app.requestSingleInstanceLock()) app.quit()
+const isPrimaryInstance = app.requestSingleInstanceLock()
 
 let window: BrowserWindow | undefined
 let store: MetadataStore | undefined
@@ -161,102 +161,114 @@ function installMenu(): void {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }
 
-app.on('second-instance', () => {
-  if (window?.isMinimized()) window.restore()
-  window?.focus()
-})
-app.on('before-quit', (event) => {
-  if (shutdownComplete) return
-  event.preventDefault()
-  if (shutdownStarted) return
-  if (!window || window.isDestroyed() || window.webContents.isDestroyed() || window.webContents.isCrashed()) {
-    void finishShutdown()
-    return
-  }
-  sendMenu('prepare-close')
-})
-app.on('window-all-closed', () => app.quit())
-
-app
-  .whenReady()
-  .then(async () => {
-    try {
-      store = new MetadataStore(app.getPath('userData'))
-      credentials = new CredentialService(safeStorage, store)
-      const settings = store.workspace().settings
-      nativeTheme.themeSource = settings.theme
-      const rendererPath = join(runtimeDirectory, '../renderer/index.html')
-      const devUrl = !app.isPackaged ? process.env.ELECTRON_RENDERER_URL : undefined
-      const expectedUrl = devUrl || pathToFileURL(rendererPath).href
-      if (devUrl) {
-        const url = new URL(devUrl)
-        if (!['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) || url.protocol !== 'http:')
-          throw new Error('The development renderer must use a local HTTP server.')
-      }
-      session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) =>
-        callback(false),
-      )
-      session.defaultSession.setPermissionCheckHandler(() => false)
-      session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-        const csp = `default-src 'self'; script-src 'self'${devUrl ? " 'unsafe-inline'" : ''}; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'${devUrl ? ` ws://${new URL(devUrl).host}` : ''}; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'`
-        callback({ responseHeaders: { ...details.responseHeaders, 'Content-Security-Policy': [csp] } })
-      })
-      window = new BrowserWindow({
-        width: 1440,
-        height: 900,
-        minWidth: 1024,
-        minHeight: 700,
-        show: false,
-        title: 'Harbor DB',
-        backgroundColor: nativeTheme.shouldUseDarkColors ? '#101318' : '#f4f6fa',
-        autoHideMenuBar: process.platform !== 'darwin',
-        icon: join(app.getAppPath(), 'resources', process.platform === 'win32' ? 'icon.ico' : 'icon.png'),
-        webPreferences: {
-          preload: join(runtimeDirectory, '../preload/index.js'),
-          contextIsolation: true,
-          nodeIntegration: false,
-          sandbox: true,
-          webSecurity: true,
-          allowRunningInsecureContent: false,
-          spellcheck: false,
-        },
-      })
-      window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
-      window.webContents.on('will-navigate', (event) => event.preventDefault())
-      window.webContents.on('will-attach-webview', (event) => event.preventDefault())
-      window.webContents.on('render-process-gone', () => {
-        if (!shutdownStarted)
-          dialog.showErrorBox(
-            'Harbor DB workspace stopped',
-            'The last saved workspace is preserved. Restart Harbor DB to recover it. Active server operations may have completed; inspect the database before retrying a write.',
-          )
-      })
-      removeIpc = registerIpc(window, expectedUrl, store, credentials, sql, redis, finishShutdown)
-      window.webContents.setZoomFactor(settings.zoom)
-      window.on('close', (event) => {
-        if (!shutdownComplete) {
-          event.preventDefault()
-          app.quit()
-        }
-      })
-      window.once('ready-to-show', () => window?.show())
-      installMenu()
-      if (devUrl) await window.loadURL(devUrl)
-      else await window.loadFile(rendererPath)
-    } catch (error) {
-      dialog.showErrorBox(
-        'Harbor DB needs attention',
-        error instanceof Error
-          ? error.message
-          : 'Application initialization failed. Your existing files have been preserved.',
-      )
-      await finishShutdown()
+// Only the lock owner may initialize storage, windows, or shutdown handlers.
+// app.quit() alone does not stop JavaScript execution in a secondary process.
+if (!isPrimaryInstance) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (window?.isMinimized()) window.restore()
+    window?.show()
+    window?.focus()
+  })
+  app.on('before-quit', (event) => {
+    if (shutdownComplete) return
+    event.preventDefault()
+    if (shutdownStarted) return
+    if (
+      !window ||
+      window.isDestroyed() ||
+      window.webContents.isDestroyed() ||
+      window.webContents.isCrashed()
+    ) {
+      void finishShutdown()
+      return
     }
+    sendMenu('prepare-close')
   })
-  .catch((error) => {
-    dialog.showErrorBox(
-      'Harbor DB could not start',
-      error instanceof Error ? error.message : 'Unknown initialization error.',
-    )
-    app.exit(1)
-  })
+  app.on('window-all-closed', () => app.quit())
+
+  app
+    .whenReady()
+    .then(async () => {
+      try {
+        store = new MetadataStore(app.getPath('userData'))
+        credentials = new CredentialService(safeStorage, store)
+        const settings = store.workspace().settings
+        nativeTheme.themeSource = settings.theme
+        const rendererPath = join(runtimeDirectory, '../renderer/index.html')
+        const devUrl = !app.isPackaged ? process.env.ELECTRON_RENDERER_URL : undefined
+        const expectedUrl = devUrl || pathToFileURL(rendererPath).href
+        if (devUrl) {
+          const url = new URL(devUrl)
+          if (!['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) || url.protocol !== 'http:')
+            throw new Error('The development renderer must use a local HTTP server.')
+        }
+        session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) =>
+          callback(false),
+        )
+        session.defaultSession.setPermissionCheckHandler(() => false)
+        session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+          const csp = `default-src 'self'; script-src 'self'${devUrl ? " 'unsafe-inline'" : ''}; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'${devUrl ? ` ws://${new URL(devUrl).host}` : ''}; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'`
+          callback({ responseHeaders: { ...details.responseHeaders, 'Content-Security-Policy': [csp] } })
+        })
+        window = new BrowserWindow({
+          width: 1440,
+          height: 900,
+          minWidth: 1024,
+          minHeight: 700,
+          show: false,
+          title: 'Harbor DB',
+          backgroundColor: nativeTheme.shouldUseDarkColors ? '#101318' : '#f4f6fa',
+          autoHideMenuBar: process.platform !== 'darwin',
+          icon: join(app.getAppPath(), 'resources', process.platform === 'win32' ? 'icon.ico' : 'icon.png'),
+          webPreferences: {
+            preload: join(runtimeDirectory, '../preload/index.js'),
+            contextIsolation: true,
+            nodeIntegration: false,
+            sandbox: true,
+            webSecurity: true,
+            allowRunningInsecureContent: false,
+            spellcheck: false,
+          },
+        })
+        window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+        window.webContents.on('will-navigate', (event) => event.preventDefault())
+        window.webContents.on('will-attach-webview', (event) => event.preventDefault())
+        window.webContents.on('render-process-gone', () => {
+          if (!shutdownStarted)
+            dialog.showErrorBox(
+              'Harbor DB workspace stopped',
+              'The last saved workspace is preserved. Restart Harbor DB to recover it. Active server operations may have completed; inspect the database before retrying a write.',
+            )
+        })
+        removeIpc = registerIpc(window, expectedUrl, store, credentials, sql, redis, finishShutdown)
+        window.webContents.setZoomFactor(settings.zoom)
+        window.on('close', (event) => {
+          if (!shutdownComplete) {
+            event.preventDefault()
+            app.quit()
+          }
+        })
+        window.once('ready-to-show', () => window?.show())
+        installMenu()
+        if (devUrl) await window.loadURL(devUrl)
+        else await window.loadFile(rendererPath)
+      } catch (error) {
+        dialog.showErrorBox(
+          'Harbor DB needs attention',
+          error instanceof Error
+            ? error.message
+            : 'Application initialization failed. Your existing files have been preserved.',
+        )
+        await finishShutdown()
+      }
+    })
+    .catch((error) => {
+      dialog.showErrorBox(
+        'Harbor DB could not start',
+        error instanceof Error ? error.message : 'Unknown initialization error.',
+      )
+      app.exit(1)
+    })
+}
