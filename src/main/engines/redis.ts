@@ -1,4 +1,15 @@
-import { createClient, RESP_TYPES } from 'redis'
+import { openRedisSubscription } from './redis-subscription'
+import { redisServerIdentity, keyValueConfirmationTarget } from '../../shared/valkey'
+import { isKeyValueEngine } from '../../shared/key-value'
+import { randomUUID } from 'node:crypto'
+import { redisWire, redisCommandKeys, type RedisWireClient } from './redis-topology-client'
+import type { RedisTopologySnapshot } from '../../shared/redis-topology'
+import type {
+  RedisStreamGroups,
+  RedisStreamGroupsInput,
+  RedisSubscribeInput,
+  RedisSubscription,
+} from '../../shared/redis-tools'
 import type {
   Cell,
   ConnectionProfile,
@@ -13,25 +24,24 @@ import type {
   RedisValue,
   Secrets,
 } from '../../shared/contracts'
-import { openTransport, type Transport } from './transport'
+import type { Transport } from './transport'
 
 const MAX_BYTES = 1024 * 1024
 const MAX_RESPONSE_BYTES = 4 * MAX_BYTES
 const MAX_COLLECTION_ROWS = 500
 
-interface WireClient {
-  readonly isOpen: boolean
-  readonly isReady: boolean
-  connect(): Promise<unknown>
-  destroy(): void
-  sendCommand(args: (string | Buffer)[]): Promise<unknown>
-  on(event: string, callback: (...args: unknown[]) => void): unknown
-}
 interface LiveConnection {
-  client: WireClient
+  client: RedisWireClient
   profile: ConnectionProfile
+  secrets: Secrets
   transport: Transport
   status: ConnectionStatus
+  nativeVersion?: string
+  activeScans: number
+  scans: Map<
+    string,
+    { nodes: string[]; nodeIndex: number; cursor: string; pattern: string; createdAt: number }
+  >
 }
 
 export const REDIS_READ_COMMANDS = new Set([
@@ -221,9 +231,7 @@ export function parseRedisCommand(source: string): Buffer[] {
 }
 
 export function redisConfirmationTarget(profile: ConnectionProfile, command = 'FLUSHDB'): string {
-  return command.toUpperCase() === 'FLUSHALL'
-    ? `All Redis databases on ${profile.host}:${profile.port}`
-    : `Redis database ${profile.redisDb} on ${profile.host}:${profile.port}`
+  return keyValueConfirmationTarget(profile, command)
 }
 
 export function assertRedisCommandAllowed(
@@ -425,6 +433,10 @@ return result
 export class RedisService {
   private readonly connections = new Map<string, LiveConnection>()
   private readonly states = new Map<string, ConnectionStatus>()
+  private readonly subscriptions = new Map<
+    string,
+    { snapshot: RedisSubscription; close: () => Promise<void> }
+  >()
 
   status(id: string): ConnectionStatus {
     const live = this.connections.get(id)
@@ -437,39 +449,29 @@ export class RedisService {
   }
 
   async connect(profile: ConnectionProfile, secrets: Secrets = {}): Promise<ConnectionStatus> {
+    if (!isKeyValueEngine(profile.engine))
+      throw new Error('Use the matching engine adapter for this profile.')
     await this.disconnect(profile.id)
     this.states.set(profile.id, { state: 'connecting' })
     const started = performance.now()
     let transport: Transport | undefined
-    let client: WireClient | undefined
+    let client: RedisWireClient | undefined
     try {
-      transport = await openTransport(profile, secrets)
-      client = createClient({
-        socket: {
-          host: transport.host,
-          port: transport.port,
-          connectTimeout: profile.connectTimeout,
-          reconnectStrategy: false,
-          ...(transport.tls ? { tls: true as const, ...transport.tls } : {}),
-        },
-        username: profile.username || undefined,
-        password: secrets.password,
-        disableOfflineQueue: true,
-        commandsQueueMaxLength: 256,
-        commandOptions: {
-          typeMapping: {
-            [RESP_TYPES.BLOB_STRING]: Buffer,
-            [RESP_TYPES.NUMBER]: String,
-            [RESP_TYPES.BIG_NUMBER]: String,
-            [RESP_TYPES.DOUBLE]: String,
-          },
-        },
-      }) as unknown as WireClient
+      if (profile.engine === 'valkey' && profile.redis.mode !== 'standalone')
+        throw new Error(
+          'Valkey Cluster and Sentinel are not enabled in this support level. Use a standalone endpoint; Redis topology results do not establish Valkey support.',
+        )
+      const opened = await redisWire(profile, secrets)
+      transport = opened.transport
+      client = opened.client
       const live: LiveConnection = {
         client,
         profile: structuredClone(profile),
+        secrets: { ...secrets },
         transport,
         status: { state: 'connecting' },
+        scans: new Map(),
+        activeScans: 0,
       }
       client.on('error', (...args) => {
         live.status = {
@@ -491,28 +493,29 @@ export class RedisService {
       this.connections.set(profile.id, live)
       // INFO is required to distinguish Sentinel/Cluster before any SELECT assumption.
       const info = text(await this.command(live, ['INFO']))
-      const mode = /^redis_mode:(.+)$/m.exec(info)?.[1]?.trim()
-      if (mode === 'sentinel' || mode === 'cluster' || /^cluster_enabled:1\r?$/m.test(info)) {
+      const identity = redisServerIdentity(info, profile.engine)
+      live.nativeVersion = identity.version
+      const mode = identity.mode
+      if (
+        profile.redis.mode === 'standalone' &&
+        (mode === 'sentinel' || mode === 'cluster' || /^cluster_enabled:1\r?$/m.test(info))
+      )
         throw new Error(
-          `Redis ${mode === 'sentinel' ? 'Sentinel' : 'Cluster'} is outside this release. Connect to a standalone Redis server; logical database selection is not applied to clusters.`,
+          'This endpoint belongs to a Redis topology. Choose Cluster or Sentinel in connection settings before connecting.',
         )
-      }
-      if (!/^redis_version:/m.test(info))
-        throw new Error(
-          'Unable to establish the Redis deployment mode. This release requires INFO permission and a standalone Redis server.',
-        )
-      await this.command(live, ['SELECT', String(profile.redisDb)])
-      const version = /^redis_version:(.+)$/m.exec(info)?.[1]?.trim()
+      if (profile.redis.mode === 'cluster' && mode !== 'cluster')
+        throw new Error('The endpoint is not a Redis Cluster node.')
+      if (profile.redis.mode === 'standalone') await this.command(live, ['SELECT', String(profile.redisDb)])
       live.status = {
         state: 'connected',
-        version,
+        version: profile.engine === 'valkey' ? `Valkey ${identity.version}` : identity.version,
         durationMs: Math.round(performance.now() - started),
         transport: `${profile.ssh.enabled ? 'SSH + ' : ''}${profile.tls.enabled ? (profile.tls.rejectUnauthorized ? 'TLS verified' : 'TLS verification disabled') : 'TCP'}`,
       }
       this.states.set(profile.id, live.status)
       return live.status
     } catch (error) {
-      if (client?.isOpen) client.destroy()
+      if (client?.isOpen) await client.destroy()
       await transport?.close()
       this.connections.delete(profile.id)
       const status: ConnectionStatus = {
@@ -526,11 +529,16 @@ export class RedisService {
   }
 
   async disconnect(id: string): Promise<void> {
+    await Promise.all(
+      [...this.subscriptions.values()]
+        .filter((record) => record.snapshot.connectionId === id)
+        .map((record) => record.close()),
+    )
     const live = this.connections.get(id)
     this.connections.delete(id)
     this.states.set(id, { state: 'disconnected' })
     if (!live) return
-    if (live.client.isOpen) live.client.destroy()
+    if (live.client.isOpen) await live.client.destroy()
     await live.transport.close()
   }
 
@@ -545,11 +553,11 @@ export class RedisService {
     return live
   }
 
-  private async command(live: LiveConnection, args: (string | Buffer)[]): Promise<unknown> {
+  private async command(live: LiveConnection, args: (string | Buffer)[], node?: string): Promise<unknown> {
     let timer: ReturnType<typeof setTimeout> | undefined
     try {
       return await Promise.race([
-        live.client.sendCommand(args),
+        node && live.client.sendToNode ? live.client.sendToNode(node, args) : live.client.sendCommand(args),
         new Promise<never>((_resolve, reject) => {
           timer = setTimeout(() => {
             live.status = {
@@ -559,7 +567,7 @@ export class RedisService {
             }
             // Settle the timeout before destroying the driver, which synchronously rejects its queue.
             reject(new Error(live.status.error))
-            if (live.client.isOpen) live.client.destroy()
+            if (live.client.isOpen) void Promise.resolve(live.client.destroy()).catch(() => {})
             void live.transport.close()
           }, live.profile.queryTimeout)
           timer.unref()
@@ -571,24 +579,80 @@ export class RedisService {
   }
 
   private readScriptName(live: LiveConnection): string {
-    return Number(live.status.version?.split('.')[0] ?? 7) >= 7 ? 'EVAL_RO' : 'EVAL'
+    // Never infer command support from the user-facing product/version label.
+    // Every Valkey version supports EVAL_RO; Redis added it in version 7.
+    return live.profile.engine === 'valkey' || Number(live.nativeVersion?.split('.')[0] ?? 7) >= 7
+      ? 'EVAL_RO'
+      : 'EVAL'
   }
 
   private boundedRead(live: LiveConnection, args: (string | Buffer)[]): Promise<unknown> {
-    return this.command(live, [this.readScriptName(live), BOUNDED_REPLY_SCRIPT, '0', ...args])
+    const keys = redisCommandKeys(args)
+    return this.command(live, [
+      this.readScriptName(live),
+      BOUNDED_REPLY_SCRIPT,
+      String(keys.length),
+      ...keys,
+      ...args,
+    ])
   }
 
   async scan(input: RedisScanInput): Promise<RedisScanResult> {
     const live = this.live(input.connectionId)
+    if (live.activeScans >= 2)
+      throw new Error(
+        'This connection already has 2 key scans running. Wait for one to finish, then retry; no scan was started.',
+      )
+    live.activeScans++
+    try {
+      return await this.scanOn(live, input)
+    } finally {
+      live.activeScans--
+    }
+  }
+
+  private async scanOn(live: LiveConnection, input: RedisScanInput): Promise<RedisScanResult> {
+    const nodes = live.client.scanNodes?.()
+    let token: string | undefined
+    let state:
+      { nodes: string[]; nodeIndex: number; cursor: string; pattern: string; createdAt: number } | undefined
+    if (nodes) {
+      if (!nodes.length) throw new Error('No ready primary was discovered.')
+      for (const [key, value] of live.scans) if (Date.now() - value.createdAt > 600000) live.scans.delete(key)
+      if (input.cursor === '0') {
+        if (live.scans.size >= 20) live.scans.delete(live.scans.keys().next().value!)
+        state = { nodes, nodeIndex: 0, cursor: '0', pattern: input.pattern, createdAt: Date.now() }
+      } else {
+        state = live.scans.get(input.cursor)
+        live.scans.delete(input.cursor)
+        if (
+          !state ||
+          state.pattern !== input.pattern ||
+          JSON.stringify(state.nodes) !== JSON.stringify(nodes)
+        )
+          throw new Error(
+            'The scan cursor expired or topology/pattern changed. Restart the scan; prior results are incomplete.',
+          )
+      }
+      token = `scan:${randomUUID()}`
+    } else if (!/^\d+$/.test(input.cursor))
+      throw new Error('This scan cursor belongs to another connection. Restart the scan.')
+    const args = [
+      'SCAN',
+      state?.cursor ?? input.cursor,
+      'MATCH',
+      input.pattern,
+      'COUNT',
+      String(Math.min(input.count, 1000)),
+    ]
     const reply = array(
-      await this.boundedRead(live, [
-        'SCAN',
-        input.cursor,
-        'MATCH',
-        input.pattern,
-        'COUNT',
-        String(Math.min(input.count, 1000)),
-      ]),
+      state
+        ? await this.command(
+            live,
+            [this.readScriptName(live), BOUNDED_REPLY_SCRIPT, '0', ...args],
+            state.nodes[state.nodeIndex],
+          )
+        : await this.boundedRead(live, args),
     )
     const unique = [
       ...new Map(array(reply[1]).map((key) => [buffer(key).toString('base64'), buffer(key)])).values(),
@@ -596,6 +660,10 @@ export class RedisService {
     const keys: RedisKey[] = []
     // Limit queued metadata calls even when COUNT returns more than requested.
     for (let start = 0; start < unique.length; start += 16) {
+      if (this.connections.get(input.connectionId) !== live || !live.client.isReady)
+        throw new Error(
+          'The connection changed or disconnected during this scan. Reconnect and restart the scan.',
+        )
       const batch = await Promise.all(
         unique.slice(start, start + 16).map(async (key) => {
           const [type, ttl] = await Promise.all([
@@ -607,7 +675,159 @@ export class RedisService {
       )
       keys.push(...batch)
     }
+    if (state && token) {
+      if (JSON.stringify(state.nodes) !== JSON.stringify(live.client.scanNodes?.()))
+        throw new Error(
+          'The primary nodes changed while scanning. Restart the scan; prior results are incomplete.',
+        )
+      const node = state.nodes[state.nodeIndex]!
+      state.cursor = text(reply[0])
+      if (state.cursor === '0') state.nodeIndex++
+      const done = state.nodeIndex >= state.nodes.length
+      if (!done) live.scans.set(token, state)
+      return {
+        cursor: done ? '0' : token,
+        keys,
+        progress: { node, completedNodes: state.nodeIndex, totalNodes: state.nodes.length },
+      }
+    }
     return { cursor: text(reply[0]), keys }
+  }
+
+  async topology(id: string): Promise<RedisTopologySnapshot> {
+    const live = this.live(id)
+    await this.command(live, ['PING'])
+    live.status = { ...live.status, state: 'connected', error: undefined }
+    return live.client.topology()
+  }
+
+  async streamGroups(input: RedisStreamGroupsInput): Promise<RedisStreamGroups> {
+    const live = this.live(input.connectionId)
+    const key = decodeBase64(input.keyBase64)
+    const reply = array(
+      await this.boundedRead(live, [
+        'XINFO',
+        input.group === undefined ? 'GROUPS' : 'CONSUMERS',
+        key,
+        ...(input.group === undefined ? [] : [input.group]),
+      ]),
+    )
+    return {
+      kind: input.group === undefined ? 'groups' : 'consumers',
+      rows: reply.slice(0, 500).map((row) => array(row).map(redisCell)),
+      truncated: reply.length > 500,
+    }
+  }
+
+  async subscribe(input: RedisSubscribeInput): Promise<RedisSubscription> {
+    const live = this.live(input.connectionId)
+    const records = [...this.subscriptions.values()]
+    if (
+      records.some(
+        (record) =>
+          record.snapshot.connectionId === input.connectionId && record.snapshot.state === 'running',
+      )
+    )
+      throw new Error('Stop the current subscription for this connection before starting another.')
+    if (records.filter((record) => record.snapshot.state === 'running').length >= 4)
+      throw new Error('At most four live subscriptions may run at once.')
+    for (const [id, record] of this.subscriptions)
+      if (record.snapshot.state !== 'running') this.subscriptions.delete(id)
+    const id = randomUUID()
+    const snapshot: RedisSubscription = {
+      id,
+      connectionId: input.connectionId,
+      channel: input.channel,
+      state: 'running',
+      expiresAt: new Date(Date.now() + input.seconds * 1000).toISOString(),
+      messages: [],
+      bytes: 0,
+    }
+    const node = live.client.topology().nodes.find((entry) => entry.role === 'primary')
+    if (!node) throw new Error('No connected primary is available for capture.')
+    const endpoint = live.profile.redis.addressMap.find((entry) => entry.discovered === node.address)
+    const separator = node.address.lastIndexOf(':')
+    const target =
+      live.profile.redis.mode === 'standalone'
+        ? live.profile
+        : {
+            ...live.profile,
+            host: endpoint?.host ?? node.address.slice(0, separator),
+            port: endpoint?.port ?? Number(node.address.slice(separator + 1)),
+          }
+    let capture: { close(): Promise<void> } | undefined
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let closed = false
+    const close = async () => {
+      if (closed) return
+      closed = true
+      if (timer) clearTimeout(timer)
+      if (snapshot.state === 'running') snapshot.state = 'stopped'
+      await capture?.close()
+    }
+    this.subscriptions.set(id, { snapshot, close })
+    try {
+      capture = await openRedisSubscription(
+        target,
+        live.secrets,
+        input.channel,
+        (message) => {
+          if (snapshot.state !== 'running') return
+          const size = message.byteLength
+          const clipped = message.subarray(0, 65536)
+          if (snapshot.bytes + clipped.byteLength > 2 * 1024 * 1024) {
+            snapshot.reason = 'The 2 MiB capture limit was reached.'
+            void close()
+            return
+          }
+          snapshot.messages.push({
+            sequence: snapshot.messages.length + 1,
+            at: new Date().toISOString(),
+            value: redisCell(clipped),
+            bytes: size,
+            truncated: size > clipped.byteLength,
+          })
+          snapshot.bytes += clipped.byteLength
+          if (snapshot.messages.length >= 500 || snapshot.bytes >= 2 * 1024 * 1024) {
+            snapshot.reason = 'The 500-message / 2 MiB capture limit was reached.'
+            void close()
+          }
+        },
+        (reason) => {
+          snapshot.state = 'failed'
+          snapshot.reason = reason
+          void close()
+        },
+      )
+      if (closed || this.connections.get(input.connectionId) !== live) {
+        await capture.close()
+        throw new Error('The connection changed while starting this subscription.')
+      }
+      snapshot.expiresAt = new Date(Date.now() + input.seconds * 1000).toISOString()
+      timer = setTimeout(() => {
+        snapshot.reason = 'The selected time limit was reached.'
+        void close()
+      }, input.seconds * 1000)
+      timer.unref()
+      return structuredClone(snapshot)
+    } catch (error) {
+      snapshot.state = 'failed'
+      snapshot.reason = 'Subscription could not start. Check channel ACL permissions and connectivity.'
+      await close()
+      throw error
+    }
+  }
+  subscription(id: string): RedisSubscription {
+    const record = this.subscriptions.get(id)
+    if (!record) throw new Error('This subscription expired. Start a new explicit capture.')
+    return structuredClone(record.snapshot)
+  }
+  async stopSubscription(id: string): Promise<RedisSubscription> {
+    const record = this.subscriptions.get(id)
+    if (!record) throw new Error('This subscription expired.')
+    record.snapshot.reason = 'Stopped by the user.'
+    await record.close()
+    return structuredClone(record.snapshot)
   }
 
   async inspect(input: RedisInspectInput): Promise<RedisValue> {
@@ -826,6 +1046,10 @@ export class RedisService {
     const live = this.live(input.connectionId)
     const args = parseRedisCommand(input.sql)
     const command = assertRedisCommandAllowed(live.profile, args, input.confirm)
+    if (live.profile.redis.mode !== 'standalone' && command === 'SCAN')
+      throw new Error(
+        'Use the node-aware key browser to scan this topology. Its cursor is bound to the current primary nodes.',
+      )
     const started = performance.now()
     await this.guardReply(live, command, args, input.maxRows)
     const boundedCommands = [

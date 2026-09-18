@@ -1,0 +1,19 @@
+# Amazon Athena — implemented candidate, real account verification blocked
+
+DB13, 2026-09-18. Native AWS Athena client `@aws-sdk/client-athena` 3.1135.0 and bounded HTTP transport `@smithy/node-http-handler` 4.12.1 are pinned, Apache-2.0, Node 20+/18+. Published package scripts contain no install/postinstall hooks; installed with `--save-exact --ignore-scripts --no-audit --no-fund`. No machine AWS credentials, profiles or endpoint configuration are loaded. The explicit credential JSON uses the existing protected/session-only credential mechanism.
+
+References: [StartQueryExecution](https://docs.aws.amazon.com/athena/latest/APIReference/API_StartQueryExecution.html), [GetWorkGroup](https://docs.aws.amazon.com/athena/latest/APIReference/API_GetWorkGroup.html), [GetQueryResults](https://docs.aws.amazon.com/athena/latest/APIReference/API_GetQueryResults.html). Native job IDs and an explicit idempotency token are used; SDK maxAttempts is one. No automatic resubmission, result reuse, resource provisioning, IAM changes, S3 cleanup or scheduled operation occurs.
+
+## Workflow and scope
+
+Connection requires the exact regional Athena HTTPS endpoint, catalog, database, workgroup, encrypted S3 result prefix and 12-digit expected bucket owner. It inspects metadata only. The workgroup must enforce the reviewed output scope and a server-side scan cutoff no higher than the profile budget. Harbor rechecks those settings before each submitted job. IAM/source-storage permissions remain authoritative; a SQL statement may reference another object if the supplied principal is authorized, and Harbor does not claim to implement an AWS IAM sandbox.
+
+Native catalog/database/table/column browsing is bounded. Table opening creates an inert quoted draft. Every user SQL submission opens scope/cost review and requires the exact profile name. Execution uses asynchronous query identity, phase and scanned-byte reporting, native cancellation and bounded result pagination. Read-only full export uses existing explicit export review and backpressure. Result storage identity is checked again before retrieval. Exact native string values, duplicate labels, null/empty distinctions and column types are retained; complex/binary/temporal strings are not decoded speculatively. Result counts outside exact JavaScript integer range fail closed. Interactive transactions, parameters, grid edits and managed-result storage are not advertised.
+
+The scan cutoff is a server resource limit, not a monetary guarantee. Cancellation does not reverse completed writes, output files or charges. Credentials expiring or losing authorization require explicit reconnect. Unsupported private endpoints and client-certificate authentication are rejected; verified TLS is mandatory.
+
+## Evidence and prerequisite
+
+`implementation-athena-protocol`: 7/7 passed, exit 0. Injected endpoint tests cover native identity, exact paged results, storage/cutoff drift, inert draft quoting, cost/readonly guards, unknown write acknowledgement without replay, repeated cursor rejection and matching cancellation. These are protocol/unit evidence, **not real AWS compatibility evidence**. Combined regression `merged-engines-regression`: 55/55 passed across nine files.
+
+Real acceptance requires an authorized disposable AWS account, scoped temporary credentials supplied through a secure local file, existing Athena engine-3 workgroup with enforced scan/output settings, encrypted disposable S3 result prefix/expected owner, Glue/catalog tables over synthetic data, restricted and writable IAM principals, and an explicit test cost budget. None is available in this task; no AWS call, account creation or paid compute activation was performed. Native cloud and desktop/packaged workflows remain incomplete until those prerequisites exist.

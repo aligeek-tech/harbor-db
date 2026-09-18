@@ -33,6 +33,8 @@ import { Badge } from './ui/badge'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog'
 import { Field, FieldGroup, FieldLabel } from './ui/field'
 import { CopyButton, ErrorPanel, IconButton, Loading, useConfirm } from './common'
+import { RedisTopologyPanel } from './RedisTopologyPanel'
+import { RedisLiveTools } from './RedisLiveTools'
 
 type RedisType = 'string' | 'hash' | 'list' | 'set' | 'zset' | 'stream'
 type Mutation = RedisMutateInput['action']
@@ -120,6 +122,7 @@ function blankDialog(create: boolean, type: RedisType = 'string', keyName = ''):
 }
 
 export function RedisBrowser({ tab, profile }: { tab: WorkspaceTab; profile: ConnectionProfile }) {
+  const product = profile.engine === 'valkey' ? 'Valkey' : 'Redis'
   const confirm = useConfirm()
   const connected = useApp((state) => state.statuses[profile.id]?.state === 'connected')
   const demo = profile.id.startsWith('demo-')
@@ -130,6 +133,9 @@ export function RedisBrowser({ tab, profile }: { tab: WorkspaceTab; profile: Con
   const [batch, setBatch] = useState(200)
   const [scanCursor, setScanCursor] = useState('0')
   const [scanned, setScanned] = useState(false)
+  const [scanProgress, setScanProgress] = useState('')
+  const [showTopology, setShowTopology] = useState(false)
+  const [showLiveTools, setShowLiveTools] = useState(false)
   const [scanning, setScanning] = useState(false)
   const [stopped, setStopped] = useState(false)
   const [selected, setSelected] = useState<RedisKey | null>(restored?.key ?? null)
@@ -199,6 +205,11 @@ export function RedisBrowser({ tab, profile }: { tab: WorkspaceTab; profile: Con
           return [...combined.values()].slice(0, MAX_KEYS)
         })
         setScanCursor(page.cursor)
+        setScanProgress(
+          page.progress
+            ? `${page.progress.node} · ${page.progress.completedNodes}/${page.progress.totalNodes} primary nodes scanned`
+            : '',
+        )
         setScanned(true)
       } catch (cause) {
         if (mounted.current && epoch === scanEpoch.current) setError(errorText(cause))
@@ -218,7 +229,7 @@ export function RedisBrowser({ tab, profile }: { tab: WorkspaceTab; profile: Con
     if (!dirty) return true
     const accepted = await confirm({
       title: 'Discard the staged value?',
-      description: 'The edited value has not reached Redis. Apply it first, or discard this local change.',
+      description: `The edited value has not reached ${product}. Apply it first, or discard this local change.`,
       label: 'Discard local change',
       danger: true,
     })
@@ -455,10 +466,10 @@ export function RedisBrowser({ tab, profile }: { tab: WorkspaceTab; profile: Con
     return (
       <div className="center-empty">
         <Layers />
-        <h3>Redis key workspace</h3>
+        <h3>{product} key workspace</h3>
         <p>
-          This is a labeled design demo. Add and connect a real Redis profile to scan keys, inspect values,
-          and manage expiration.
+          This is a labeled design demo. Add and connect a real {product} profile to scan keys, inspect
+          values, and manage expiration.
         </p>
       </div>
     )
@@ -466,7 +477,7 @@ export function RedisBrowser({ tab, profile }: { tab: WorkspaceTab; profile: Con
     return (
       <div className="center-empty">
         <KeyRound />
-        <h3>Connect to browse Redis</h3>
+        <h3>Connect to browse {product}</h3>
         <p>
           {profile.name} · database {profile.redisDb}. Connect from the sidebar. Your key browser will keep
           its connection target.
@@ -487,19 +498,30 @@ export function RedisBrowser({ tab, profile }: { tab: WorkspaceTab; profile: Con
 
   return (
     <div className="query-workspace">
+      {showTopology && <RedisTopologyPanel profile={profile} onClose={() => setShowTopology(false)} />}
+      {showLiveTools && (
+        <RedisLiveTools profile={profile} selected={selected} onClose={() => setShowLiveTools(false)} />
+      )}
       <div className="toolbar">
         <span className="toolbar-title">
           <Layers />
           Keys <Badge variant="secondary">DB {profile.redisDb}</Badge>
+          <Badge variant="secondary">{profile.redis.mode}</Badge>
         </span>
         <span className="toolbar-spacer" />
+        <Button size="sm" variant="outline" onClick={() => setShowTopology(true)}>
+          Topology
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => setShowLiveTools(true)}>
+          Stream / live tools
+        </Button>
         <Button
           size="sm"
           variant="ghost"
           onClick={() =>
             useApp
               .getState()
-              .openTab({ connectionId: profile.id, kind: 'query', title: 'Redis console', sql: 'PING' })
+              .openTab({ connectionId: profile.id, kind: 'query', title: `${product} console`, sql: 'PING' })
           }
         >
           <Terminal data-icon="inline-start" />
@@ -518,16 +540,21 @@ export function RedisBrowser({ tab, profile }: { tab: WorkspaceTab; profile: Con
           New key
         </Button>
         <IconButton
-          label="Refresh Redis keys and selected value"
+          label={`Refresh ${product} keys and selected value`}
           disabled={scanning || loading || busy}
           onClick={() => void refresh()}
         >
           <RefreshCw />
         </IconButton>
       </div>
+      {scanProgress && (
+        <p className="field-note" role="status">
+          {scanProgress}. SCAN is incremental and may repeat keys; it is not a snapshot.
+        </p>
+      )}
       {error ? <ErrorPanel message={error} /> : null}
       <div className="redis-layout">
-        <aside className="redis-list" aria-label="Redis key browser">
+        <aside className="redis-list" aria-label={`${product} key browser`}>
           <form
             className="flex flex-col gap-2 border-b p-3"
             onSubmit={(event) => {
@@ -537,7 +564,7 @@ export function RedisBrowser({ tab, profile }: { tab: WorkspaceTab; profile: Con
           >
             <div className="flex gap-2">
               <Input
-                aria-label="Redis key pattern"
+                aria-label={`${product} key pattern`}
                 value={pattern}
                 placeholder="Filter with a pattern, e.g. user:*"
                 onChange={(event) => setPattern(event.target.value)}
@@ -649,7 +676,7 @@ export function RedisBrowser({ tab, profile }: { tab: WorkspaceTab; profile: Con
             </span>
           </div>
         </aside>
-        <section className="redis-detail" aria-label="Redis key inspector">
+        <section className="redis-detail" aria-label={`${product} key inspector`}>
           {!selected ? (
             <div className="center-empty">
               <KeyRound />
@@ -864,7 +891,7 @@ export function RedisBrowser({ tab, profile }: { tab: WorkspaceTab; profile: Con
                       onClick={() =>
                         void (async () => {
                           const accepted = await confirm({
-                            title: 'Delete this Redis key?',
+                            title: `Delete this ${product} key?`,
                             description: `${profile.name} · database ${profile.redisDb} · ${profile.environment}. This permanently removes the entire ${data.key.type} value.`,
                             typed: selected.key || '(empty key name)',
                             danger: true,
@@ -936,12 +963,12 @@ export function RedisBrowser({ tab, profile }: { tab: WorkspaceTab; profile: Con
       >
         <DialogContent className="connection-dialog">
           <DialogHeader>
-            <DialogTitle>{dialog?.create ? 'Create Redis key' : 'Change collection'}</DialogTitle>
+            <DialogTitle>{dialog?.create ? `Create ${product} key` : 'Change collection'}</DialogTitle>
             <DialogDescription>
               {profile.name} · database {profile.redisDb} · {profile.environment}.{' '}
               {dialog?.create
                 ? 'An existing key will never be overwritten.'
-                : 'Review this operation before applying it to Redis.'}
+                : `Review this operation before applying it to ${product}.`}
             </DialogDescription>
           </DialogHeader>
           {dialog ? (

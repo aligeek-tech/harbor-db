@@ -11,6 +11,10 @@ files:
 extraMetadata:
   desktopName: dev.harbordb.desktop.desktop
 asar: true
+asarUnpack:
+  # Db2 child entry/chunks and any separately approved native runtime must be real files.
+  - out/main/**
+  - node_modules/ibm_db/**
 npmRebuild: false
 artifactName: Harbor-DB-${version}-${os}-${arch}.${ext}
 linux:
@@ -20,7 +24,7 @@ linux:
   icon: resources/icon.icns
   executableName: harbor-db
   syncDesktopName: true
-  synopsis: Local PostgreSQL, MariaDB and Redis workspace
+  synopsis: Local SQL, MongoDB and Redis workspace
   maintainer: Harbor DB contributors
 mac:
   category: public.app-category.developer-tools

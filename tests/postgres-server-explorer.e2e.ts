@@ -1,4 +1,4 @@
-import { _electron, expect, test, type ElectronApplication, type Page } from '@playwright/test'
+import { _electron, expect, test, type ElectronApplication } from '@playwright/test'
 import { randomUUID } from 'node:crypto'
 import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -6,14 +6,8 @@ import { join, resolve } from 'node:path'
 import { Client } from 'pg'
 import { profileSchema } from '../src/shared/contracts'
 import { inspectElectronSandbox, waitForElectronWorkspace } from './electron-runtime'
-
-async function typeSql(page: Page, sql: string) {
-  const editor = page.locator('.monaco-editor:visible textarea').first()
-  await editor.focus()
-  await editor.press('ControlOrMeta+Home')
-  await editor.press('ControlOrMeta+Shift+End')
-  await editor.pressSequentially(sql)
-}
+import { typeSql } from './editor-input'
+import { shortcutLabel, shortcutPlatform } from '../src/shared/shortcuts'
 
 test('blank PostgreSQL profile browses databases and keeps table and saved SQL targets isolated under one connection', async () => {
   test.skip(process.env.HARBOR_INTEGRATION !== '1', 'Requires the isolated PostgreSQL development service.')
@@ -118,7 +112,9 @@ test('blank PostgreSQL profile browses databases and keeps table and saved SQL t
     await page.getByRole('button', { name: 'New query', exact: true }).first().click()
     await expect(page.getByRole('button', { name: 'Run script', exact: true })).toBeDisabled()
     await expect(
-      page.locator('.editor-region:visible').getByRole('button', { name: /^Run(?: Ctrl Enter)?$/ }),
+      page
+        .locator('.editor-region:visible')
+        .getByRole('button', { name: /^Run(?: (?:Command|Ctrl)\+Enter)?$/ }),
     ).toBeDisabled()
     await page.getByRole('button', { name: 'Choose database', exact: true }).click()
     const picker = page.getByRole('dialog', { name: 'Choose database', exact: true })
@@ -169,7 +165,12 @@ test('blank PostgreSQL profile browses databases and keeps table and saved SQL t
       await page.getByRole('button', { name: 'Run script', exact: true }).click()
       await expect(grid.getByRole('cell', { name: database, exact: true })).toBeVisible()
       await expect(grid.getByRole('cell', { name: markers[index], exact: true })).toBeVisible()
-      await page.getByRole('button', { name: 'Save query · Ctrl+S', exact: true }).click()
+      await page
+        .getByRole('button', {
+          name: `Save query · ${shortcutLabel('save-query', shortcutPlatform(process.platform))}`,
+          exact: true,
+        })
+        .click()
       const save = page.getByRole('dialog', { name: 'Save query', exact: true })
       await save.getByLabel('Name', { exact: true }).fill(savedNames[index])
       await save.getByRole('button', { name: 'Save query', exact: true }).click()

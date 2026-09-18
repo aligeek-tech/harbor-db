@@ -102,7 +102,8 @@ export const demoResult: QueryResult = {
 }
 export const previewBootstrap: Bootstrap = {
   profiles: [],
-  workspace: { tabs: [], activeTabId: null, expanded: [], settings: settingsSchema.parse({}) },
+  workspace: { id: 'default', name: 'Default workspace', archivedWorkspaces: [], recentlyClosed: [], tabs: [], activeTabId: null, expanded: [], settings: settingsSchema.parse({}) },
+  reports: [],
   savedQueries: [],
   history: [],
   secureStorage: {

@@ -1,0 +1,101 @@
+.mongo-tools-dialog {
+  width: min(920px, 94vw);
+  max-width: 94vw;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+}
+.mongo-tools-scroll {
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  gap: 14px;
+  padding: 2px;
+}
+.mongo-tools-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.mongo-tools-row > label:has(input:not([type='checkbox'])) {
+  flex: 1;
+  min-width: 120px;
+}
+.mongo-tools-dialog textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text);
+  padding: 8px;
+  border-radius: 5px;
+  resize: vertical;
+}
+.mongo-tools-dialog select {
+  border: 1px solid var(--line);
+  background: var(--raised);
+  color: var(--text);
+  padding: 8px;
+  border-radius: 5px;
+}
+.mongo-tools-preview {
+  max-height: 280px;
+  overflow: auto;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  padding: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+.mongo-pipeline-stage,
+.mongo-index-form {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.mongo-index-form > label,
+.mongo-index-review > label {
+  display: grid;
+  gap: 6px;
+}
+.mongo-index-form > label:has(input[type='checkbox']) {
+  display: block;
+}
+.mongo-index-table {
+  border-collapse: collapse;
+  width: 100%;
+  text-align: left;
+  font-size: 12px;
+}
+.mongo-index-table th,
+.mongo-index-table td {
+  padding: 9px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+.mongo-index-table td:first-child {
+  overflow-wrap: anywhere;
+}
+.mongo-topology-summary {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 8px 20px;
+  font-size: 13px;
+}
+.mongo-topology-summary dt {
+  color: var(--muted);
+}
+.mongo-topology-summary dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.mongo-index-review {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}

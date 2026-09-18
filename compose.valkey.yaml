@@ -1,0 +1,21 @@
+# Disposable, authenticated Valkey fixture. Config and TLS files live outside the repository.
+services:
+  valkey:
+    image: valkey/valkey:9.1.2-alpine@sha256:a0dbf4c1d5708782907c10e2c72deff317518518b5288a58416981d9db95d30b
+    platform: linux/arm64
+    user: '${VALKEY_FIXTURE_UID:?Set the owner UID of the private fixture directory}'
+    command: ['valkey-server', '/fixture/valkey.conf']
+    ports:
+      - '127.0.0.1:16479:6379'
+      - '127.0.0.1:16480:6380'
+    volumes:
+      - '${VALKEY_FIXTURE_DIR:?Use a newly created private external directory}:/fixture:ro'
+    tmpfs:
+      - /data:rw,nosuid,size=64m,mode=1777
+    mem_limit: 192m
+    cpus: 1
+    logging:
+      driver: json-file
+      options:
+        max-size: '5m'
+        max-file: '2'

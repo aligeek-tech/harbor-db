@@ -5,6 +5,8 @@ import { join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { profileSchema } from '../src/shared/contracts'
 import { inspectElectronSandbox } from './electron-runtime'
+import { typeSql } from './editor-input'
+import { shortcutKeys, shortcutLabel, shortcutPlatform } from '../src/shared/shortcuts'
 
 const root = resolve(import.meta.dirname, '..')
 const fixturePassword = 'harbor_test'
@@ -190,13 +192,32 @@ test('actual Electron isolation, offline profile creation, protected credentials
 
   // Type into the locally bundled Monaco editor, then let the real debounce persist it.
   await page.getByRole('button', { name: 'New query', exact: true }).first().click()
-  const editor = page.locator('.monaco-editor textarea').first()
-  await expect(editor).toBeVisible()
-  await editor.focus()
-  await editor.press('ControlOrMeta+Home')
-  await editor.press('ControlOrMeta+Shift+End')
   const draft = "SELECT 'draft restored without execution', 9007199254740993;"
-  await editor.pressSequentially(draft)
+  const editor = await typeSql(page, draft)
+  const platform = shortcutPlatform(process.platform)
+  await expect(
+    page.getByRole('button', { name: `Save query · ${shortcutLabel('save-query', platform)}`, exact: true }),
+  ).toBeVisible()
+  for (const [action, cursor] of [
+    ['editor-start', 0],
+    ['editor-end', draft.length],
+  ] as const) {
+    await editor.press(shortcutKeys(action, platform))
+    await expect
+      .poll(async () =>
+        page.evaluate(async () => {
+          const { workspace } = await window.harbor.bootstrap()
+          return workspace.tabs.find((tab) => tab.id === workspace.activeTabId)?.cursor
+        }),
+      )
+      .toBe(cursor)
+  }
+  await editor.press(shortcutKeys('save-query', platform))
+  await expect(page.getByRole('dialog', { name: 'Save query', exact: true })).toBeVisible()
+  await page
+    .getByRole('dialog', { name: 'Save query', exact: true })
+    .getByRole('button', { name: 'Cancel', exact: true })
+    .click()
   await expect
     .poll(async () =>
       page
@@ -227,7 +248,7 @@ test('actual Electron isolation, offline profile creation, protected credentials
     ),
   )
   expect(statuses.every((status) => status.state === 'disconnected')).toBe(true)
-  await page.keyboard.press('ControlOrMeta+K')
+  await page.keyboard.press(shortcutKeys('command-palette', platform))
   const palette = page.getByRole('combobox', { name: 'Search actions and database objects' })
   await expect(palette).toBeVisible()
   await palette.fill('Open settings')
@@ -235,6 +256,19 @@ test('actual Electron isolation, offline profile creation, protected credentials
   await palette.press('Enter')
   await expect(page.getByRole('heading', { name: 'Make yourself at home' })).toBeVisible()
   await page.getByRole('button', { name: 'Done', exact: true }).click()
+  const originalTab = restored.workspace.activeTabId
+  await page.keyboard.press(shortcutKeys('new-query', platform))
+  await expect(page.getByRole('tab')).toHaveCount(2)
+  await page.keyboard.press(shortcutKeys('previous-tab', platform))
+  await expect
+    .poll(async () => (await page.evaluate(() => window.harbor.bootstrap())).workspace.activeTabId)
+    .toBe(originalTab)
+  await page.keyboard.press(shortcutKeys('next-tab', platform))
+  await expect
+    .poll(async () => (await page.evaluate(() => window.harbor.bootstrap())).workspace.activeTabId)
+    .not.toBe(originalTab)
+  await page.keyboard.press(shortcutKeys('close-tab', platform))
+  await expect(page.getByRole('tab')).toHaveCount(1)
   expect(
     await page
       .evaluate(() => window.harbor.bootstrap())
@@ -370,16 +404,12 @@ test('actual database round trips through the Electron bridge, transaction isola
   await page.getByRole('button', { name: 'Electron postgres', exact: true }).dblclick()
   await expect(page.getByLabel('Electron postgres: connected', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'New query', exact: true }).first().click()
-  const sqlEditor = page.locator('.monaco-editor textarea').first()
-  await expect(sqlEditor).toBeVisible()
-  await sqlEditor.focus()
-  await sqlEditor.press('ControlOrMeta+Home')
-  await sqlEditor.press('ControlOrMeta+Shift+End')
-  await sqlEditor.pressSequentially(
+  await typeSql(
+    page,
     "SELECT n AS id, 'developer' || n || '@example.test' AS email, CASE WHEN n % 3 = 0 THEN 'Team' ELSE 'Professional' END AS plan, (n * 29.50)::numeric(12,2) AS amount, 'active' AS status FROM generate_series(1, 16) n;",
   )
   await page.getByRole('button', { name: 'Format SQL', exact: true }).click()
-  await page.getByRole('button', { name: 'Run script', exact: true }).click()
+  await page.keyboard.press(shortcutKeys('run-script', shortcutPlatform(process.platform)))
   await expect(page.getByText('developer1@example.test', { exact: true }).first()).toBeVisible()
   await page.getByText('developer1@example.test', { exact: true }).first().click()
   await desktop!.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(1440, 900))

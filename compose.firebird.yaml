@@ -1,0 +1,18 @@
+name: harbor-roadmap-firebird-disposable
+services:
+  firebird:
+    image: firebirdsql/firebird:5.0.4@sha256:1529560400fc7847f015c57fc9d70729c44d9a9d8f9000df19c5ce1950b4c202
+    platform: linux/arm64
+    cpus: 1
+    mem_limit: 512m
+    pids_limit: 128
+    ports: ["127.0.0.1:13050:3050"]
+    environment:
+      FIREBIRD_ROOT_PASSWORD: ${FIREBIRD_ROOT_PASSWORD:?External disposable password required}
+      FIREBIRD_DATABASE: harbor.fdb
+      FIREBIRD_DATABASE_DEFAULT_CHARSET: UTF8
+    tmpfs:
+      - /var/lib/firebird/data:size=268435456
+    logging:
+      driver: json-file
+      options: {max-size: "5m", max-file: "2"}

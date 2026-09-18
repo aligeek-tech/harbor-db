@@ -1,0 +1,23 @@
+# Disposable Oracle AI Database Free fixture. Requires explicit acceptance of Oracle Free Use Terms.
+# Start with a unique project name and an external mode-0600 env file; never commit credentials.
+services:
+  oracle:
+    image: container-registry.oracle.com/database/free:23.26.1.0@sha256:f7e6cdba3d492bf8fe654303cf92e6c9adc4586e2b4527d7c3200bf96fb21f1b
+    platform: linux/arm64
+    ports:
+      - '127.0.0.1:25421:1521'
+    environment:
+      ORACLE_PWD: ${ORACLE_FIXTURE_PASSWORD:?Provide a newly generated disposable password via an external env file}
+      ORACLE_CHARACTERSET: AL32UTF8
+    cpus: 2
+    mem_limit: 4g
+    shm_size: 1g
+    volumes:
+      - oracle-data:/opt/oracle/oradata
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
+volumes:
+  oracle-data:

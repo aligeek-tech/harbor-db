@@ -1,0 +1,29 @@
+name: harbor-mysql-fixture
+services:
+  mysql:
+    image: mysql:8.4@sha256:85b9bf2e29cf836ecb8c2a15a935d4ba0c606631dff1dd79531a11983c638f2a
+    environment:
+      MYSQL_DATABASE: harbor
+      MYSQL_USER: harbor
+      MYSQL_PASSWORD: harbor_test
+      MYSQL_ROOT_PASSWORD: harbor_root
+    ports: ['127.0.0.1:13307:3306']
+    tmpfs: ['/var/lib/mysql']
+    entrypoint: ['/bin/bash', '-c']
+    command:
+      - |
+        set -eu
+        mkdir -p /tmp/harbor-mysql-tls
+        openssl req -x509 -newkey rsa:2048 -nodes -days 2 \
+          -subj '/CN=localhost' -addext 'subjectAltName=DNS:localhost,IP:127.0.0.1' \
+          -keyout /tmp/harbor-mysql-tls/key.pem -out /tmp/harbor-mysql-tls/cert.pem >/dev/null 2>&1
+        chown -R mysql:mysql /tmp/harbor-mysql-tls
+        exec /usr/local/bin/docker-entrypoint.sh mysqld \
+          --ssl-ca=/tmp/harbor-mysql-tls/cert.pem \
+          --ssl-cert=/tmp/harbor-mysql-tls/cert.pem \
+          --ssl-key=/tmp/harbor-mysql-tls/key.pem
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', '127.0.0.1', '-uharbor', '-pharbor_test']
+      interval: 2s
+      timeout: 3s
+      retries: 60

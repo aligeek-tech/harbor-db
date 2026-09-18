@@ -1,0 +1,264 @@
+{
+  "postgres": {
+    "collection": "Devicon",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/7330accdbc47e2dc0c19789a48533c4a3c50fe58/icons/postgresql/postgresql-original.svg",
+    "license": "MIT; trademarks remain with their owners",
+    "sha256": "d68b3da8c1ba0aa8a9ff18b0599836e00928dae10962ad479f01f82b130e393f"
+  },
+  "mariadb": {
+    "collection": "Devicon",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/7330accdbc47e2dc0c19789a48533c4a3c50fe58/icons/mariadb/mariadb-original.svg",
+    "license": "MIT; trademarks remain with their owners",
+    "sha256": "90f14c26b478447171ad800791535f5f5ab0f9abf80387edefb410b6fc85cbdc"
+  },
+  "mysql": {
+    "collection": "Devicon",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/7330accdbc47e2dc0c19789a48533c4a3c50fe58/icons/mysql/mysql-original.svg",
+    "license": "MIT; trademarks remain with their owners",
+    "sha256": "f73fa5d6b9da33fbf540ff96f5360c24b6d29d883ecfe6fcaecf89a8d3456067"
+  },
+  "redis": {
+    "collection": "Devicon",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/7330accdbc47e2dc0c19789a48533c4a3c50fe58/icons/redis/redis-original.svg",
+    "license": "MIT; trademarks remain with their owners",
+    "sha256": "9beacc43b0792c3489722c8272c2908998b5222e5765788efd7bdb9f8d0e4851"
+  },
+  "mongodb": {
+    "collection": "Devicon",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/7330accdbc47e2dc0c19789a48533c4a3c50fe58/icons/mongodb/mongodb-original.svg",
+    "license": "MIT; trademarks remain with their owners",
+    "sha256": "381da7cfa7f4b5fbd1a5fbb5203f5b1a7d823fcbfea140de6f695ba94162a0af"
+  },
+  "sqlite": {
+    "collection": "Devicon",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/7330accdbc47e2dc0c19789a48533c4a3c50fe58/icons/sqlite/sqlite-original.svg",
+    "license": "MIT; trademarks remain with their owners",
+    "sha256": "2b91c30887d3602479ba845cc012ef6ae577fba71eb96705a05b12e35d2c5e7e"
+  },
+  "duckdb": {
+    "collection": "Devicon",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/7330accdbc47e2dc0c19789a48533c4a3c50fe58/icons/duckdb/duckdb-original.svg",
+    "license": "MIT; trademarks remain with their owners",
+    "sha256": "06be219668a471b16413677305b9765e41d56e927c7b72146f99e492bef36bcb"
+  },
+  "mssql": {
+    "collection": "Devicon",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/7330accdbc47e2dc0c19789a48533c4a3c50fe58/icons/microsoftsqlserver/microsoftsqlserver-original.svg",
+    "license": "MIT; trademarks remain with their owners",
+    "sha256": "f52b63cb5ff8c17efc079ae93eb7e2f1a04ca34eb736310c3576b19c0b9db21d"
+  },
+  "clickhouse": {
+    "collection": "Devicon",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/7330accdbc47e2dc0c19789a48533c4a3c50fe58/icons/clickhouse/clickhouse-original.svg",
+    "license": "MIT; trademarks remain with their owners",
+    "sha256": "12cde67e9662314d8934293bc609875d111f761cb4ebb71a946f1a46cd66f841"
+  },
+  "elasticsearch": {
+    "collection": "Devicon",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/7330accdbc47e2dc0c19789a48533c4a3c50fe58/icons/elasticsearch/elasticsearch-original.svg",
+    "license": "MIT; trademarks remain with their owners",
+    "sha256": "7efc44ea67eac2a877248c0502e498bca8f61de490852c1a5c572db0b5d3f84d"
+  },
+  "oracle": {
+    "collection": "Devicon",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/7330accdbc47e2dc0c19789a48533c4a3c50fe58/icons/oracle/oracle-original.svg",
+    "license": "MIT; trademarks remain with their owners",
+    "sha256": "04644451095904f2c99bf986ddd5a1dd221cc61e4e7ac8d7ddf8093c639a5b24"
+  },
+  "firebird": {
+    "collection": "Devicon",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/7330accdbc47e2dc0c19789a48533c4a3c50fe58/icons/firebird/firebird-original.svg",
+    "license": "MIT; trademarks remain with their owners",
+    "sha256": "6edd78b514b189a4951989086ebbdcb4698e51b348713cf3c2a8ea16a538cacf"
+  },
+  "couchdb": {
+    "collection": "Devicon",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/7330accdbc47e2dc0c19789a48533c4a3c50fe58/icons/couchdb/couchdb-original.svg",
+    "license": "MIT; trademarks remain with their owners",
+    "sha256": "f88a8865a953d657eec8485648da370a238dd0b2acc35cd5bfbd75ce9733dd80"
+  },
+  "dynamodb": {
+    "collection": "AWS architecture icons 2026-07-31",
+    "url": "https://d1.awsstatic.com/onedam/marketing-channels/website/public/shared/architecture-icon-release/Icon-package_07312026.5846e92413caa21490223536cc97f1269e44fa92.zip",
+    "archivePath": "Architecture-Service-Icons_07312026/Arch_Databases/32/Arch_Amazon-DynamoDB_32.svg",
+    "source": "https://aws.amazon.com/architecture/icons/",
+    "license": "AWS architecture asset terms; AWS trademarks retained",
+    "sha256": "3ce113e746f4f3adfc4e7fb0d2c4f9590b32fa8ce5660f6cf562249554e14337"
+  },
+  "cassandra": {
+    "collection": "Devicon",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/7330accdbc47e2dc0c19789a48533c4a3c50fe58/icons/cassandra/cassandra-original.svg",
+    "license": "MIT; trademarks remain with their owners",
+    "sha256": "9b768d3057b8963787ebddf6ecd83ad876956884c8354455b6ac99343df382ae"
+  },
+  "influxdb": {
+    "collection": "Devicon",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/7330accdbc47e2dc0c19789a48533c4a3c50fe58/icons/influxdb/influxdb-original.svg",
+    "license": "MIT; trademarks remain with their owners",
+    "sha256": "e97943f99426368db009ee2e22408870cc6a3903daba9842a2435b9aa83cdd59"
+  },
+  "neo4j": {
+    "collection": "Devicon",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/7330accdbc47e2dc0c19789a48533c4a3c50fe58/icons/neo4j/neo4j-original.svg",
+    "license": "MIT; trademarks remain with their owners",
+    "sha256": "5048bfdf1ddf41d9f1d9653ed84092972aa569a7ebac4010483f9a2b203caa7e"
+  },
+  "yugabytedb": {
+    "collection": "Devicon",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/7330accdbc47e2dc0c19789a48533c4a3c50fe58/icons/yugabytedb/yugabytedb-original.svg",
+    "license": "MIT; trademarks remain with their owners",
+    "sha256": "fa9e6c2b5517432de409276c1a52e1b5f514cff4585c2219acb9d0420162a3e0"
+  },
+  "vitess": {
+    "collection": "Devicon",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/7330accdbc47e2dc0c19789a48533c4a3c50fe58/icons/vitess/vitess-original.svg",
+    "license": "MIT; trademarks remain with their owners",
+    "sha256": "2586663de734309e04ea358f7913f3abbd960621c21144df3f564231893aad01"
+  },
+  "qdrant": {
+    "collection": "Simple Icons16.31.0",
+    "url": "https://github.com/simple-icons/simple-icons/blob/16.31.0/icons/qdrant.svg",
+    "source": "https://qdrant.tech/img/brand-resources-logos/qdrant-brandmark-white.svg",
+    "license": {
+      "type": "CC0-1.0; trademarks remain with their owners"
+    },
+    "color": "DC244C",
+    "sha256": "8cf360c3147964a27ca7783bfe24801bda3d8a95bf990e351cc6d8bbe8a3ce2c"
+  },
+  "milvus": {
+    "collection": "Simple Icons16.31.0",
+    "url": "https://github.com/simple-icons/simple-icons/blob/16.31.0/icons/milvus.svg",
+    "source": "https://github.com/milvus-io/artwork/blob/e30bffa2b0632b0d4cefcdd4e1a2c09fee5b0d28/icon/black/milvus-icon-black.svg",
+    "license": {
+      "type": "CC0-1.0; trademarks remain with their owners"
+    },
+    "color": "00A1EA",
+    "sha256": "7e5dcdf1084edfafe649cae5a88cab8724ebd84d5724e877a8d89d0ccd38b7b3"
+  },
+  "cockroachdb": {
+    "collection": "Simple Icons16.31.0",
+    "url": "https://github.com/simple-icons/simple-icons/blob/16.31.0/icons/cockroachlabs.svg",
+    "source": "https://www.cockroachlabs.com",
+    "license": {
+      "type": "CC0-1.0; trademarks remain with their owners"
+    },
+    "color": "6933FF",
+    "sha256": "9e889454dba84db54b620cafff211e6c0149cba8350de4f4680432d5597658e0"
+  },
+  "tidb": {
+    "collection": "Simple Icons16.31.0",
+    "url": "https://github.com/simple-icons/simple-icons/blob/16.31.0/icons/tidb.svg",
+    "source": "https://www.pingcap.com/tidb-brand-guidelines/",
+    "license": {
+      "type": "CC0-1.0; trademarks remain with their owners"
+    },
+    "color": "DC150B",
+    "sha256": "94ae2255a39e75b8b876adb01e5fba69996ff70cab976e7b113264b99f3be33b"
+  },
+  "opensearch": {
+    "collection": "Simple Icons16.31.0",
+    "url": "https://github.com/simple-icons/simple-icons/blob/16.31.0/icons/opensearch.svg",
+    "source": "https://opensearch.org/trademark-brand-policy.html",
+    "license": {
+      "type": "CC0-1.0; trademarks remain with their owners"
+    },
+    "color": "005EB8",
+    "sha256": "022b9ed396a3492c0f9416dd2bc76d4e46402ddfda0800ce261e4a0539599b45"
+  },
+  "trino": {
+    "collection": "Simple Icons16.31.0",
+    "url": "https://github.com/simple-icons/simple-icons/blob/16.31.0/icons/trino.svg",
+    "source": "https://github.com/trinodb/docs.trino.io/blob/653a46f6bdc64b5f67302dc9ab8a0c432ca25e70/352/_static/trino.svg",
+    "license": {
+      "type": "CC0-1.0; trademarks remain with their owners"
+    },
+    "color": "DD00A1",
+    "sha256": "f365449e13ad3b3e79f4469da2f82c1543b9b1936419c24db0ec32fdeaa89724"
+  },
+  "bigquery": {
+    "collection": "Simple Icons16.31.0",
+    "url": "https://github.com/simple-icons/simple-icons/blob/16.31.0/icons/googlebigquery.svg",
+    "source": "https://cloud.google.com/icons",
+    "license": {
+      "type": "CC0-1.0; trademarks remain with their owners"
+    },
+    "color": "669DF6",
+    "sha256": "2c6bbb442c5f0f489dc6551287bc7305b1176f81f3f8e829181358801dd5db1a"
+  },
+  "snowflake": {
+    "collection": "Simple Icons16.31.0",
+    "url": "https://github.com/simple-icons/simple-icons/blob/16.31.0/icons/snowflake.svg",
+    "source": "https://www.snowflake.com/brand-guidelines/",
+    "license": {
+      "type": "CC0-1.0; trademarks remain with their owners"
+    },
+    "color": "29B5E8",
+    "sha256": "6051261051216e9cad32f5d2315a42ec2d5fd8990c6a16cbd83797b9f7bdb676"
+  },
+  "databricks": {
+    "collection": "Simple Icons16.31.0",
+    "url": "https://github.com/simple-icons/simple-icons/blob/16.31.0/icons/databricks.svg",
+    "source": "https://www.databricks.com",
+    "license": {
+      "type": "CC0-1.0; trademarks remain with their owners"
+    },
+    "color": "FF3621",
+    "sha256": "52a700ac7923f37acfbfe8ab3f5f2b23a365c66ffc059f09eaae2e5553906092"
+  },
+  "hana": {
+    "collection": "Simple Icons16.31.0",
+    "url": "https://github.com/simple-icons/simple-icons/blob/16.31.0/icons/sap.svg",
+    "source": "https://www.sap.com",
+    "license": {
+      "type": "CC0-1.0; trademarks remain with their owners"
+    },
+    "color": "0FAAFF",
+    "sha256": "49c87e0a867f10bc9f5c339c4080c0c7768b57b0d763a8637c7d8182b84ce815"
+  },
+  "athena": {
+    "collection": "AWS architecture icons 2026-07-31",
+    "url": "https://d1.awsstatic.com/onedam/marketing-channels/website/public/shared/architecture-icon-release/Icon-package_07312026.5846e92413caa21490223536cc97f1269e44fa92.zip",
+    "archivePath": "Architecture-Service-Icons_07312026/Arch_Analytics/32/Arch_Amazon-Athena_32.svg",
+    "source": "https://aws.amazon.com/architecture/icons/",
+    "license": "AWS architecture asset terms; AWS trademarks retained",
+    "sha256": "ba391d49b87d4751d79271c9820dcf92a48264b4c00787d73ff8551db5169af5"
+  },
+  "redshift": {
+    "collection": "AWS architecture icons 2026-07-31",
+    "url": "https://d1.awsstatic.com/onedam/marketing-channels/website/public/shared/architecture-icon-release/Icon-package_07312026.5846e92413caa21490223536cc97f1269e44fa92.zip",
+    "archivePath": "Architecture-Service-Icons_07312026/Arch_Analytics/32/Arch_Amazon-Redshift_32.svg",
+    "source": "https://aws.amazon.com/architecture/icons/",
+    "license": "AWS architecture asset terms; AWS trademarks retained",
+    "sha256": "872d6ea62b9bc02e7925bd714c1d0cf1d6042c492b824a15ec93ebf897e83b93"
+  },
+  "db2": {
+    "collection": "IBM Carbon",
+    "url": "https://raw.githubusercontent.com/carbon-design-system/carbon/main/packages/icons/src/svg/32/ibm--db2.svg",
+    "license": "Apache-2.0",
+    "sha256": "392be5289e9f7a44fa2f710e81f330591e2dc558b2e46ee2cfde53cc952b6213"
+  },
+  "valkey": {
+    "collection": "Valkey official website",
+    "url": "https://raw.githubusercontent.com/valkey-io/valkey-io.github.io/0ea865e7292aad3977fda733d10705df12454750/static/img/favicon/safari-pinned-tab.svg",
+    "license": "LF Projects trademark; official monochrome favicon",
+    "sha256": "1ed30d2afbc02ea66fd102ac1b10edc86f463e17e06556b354aab9f7eb91b0ae"
+  },
+  "weaviate": {
+    "collection": "Weaviate official website",
+    "url": "https://raw.githubusercontent.com/weaviate/weaviate-io/766f24440c6df2e3c8ce4ebd804fe434af77b06d/static/img/site/weaviate-logo-icon.svg",
+    "license": "Weaviate trademark",
+    "sha256": "8d6fa8dcfb40e749ae92921c25fb77a6f590ebec1d19f6c52711ff28dd78413b"
+  },
+  "questdb": {
+    "collection": "QuestDB official website",
+    "url": "https://questdb.com/images/homepage/performance/questdb-q.svg",
+    "license": "QuestDB trademark",
+    "sha256": "6a2bbf6a8fd99f2930e9ddac74c377fb13e4c21b66db9ac56f403bb8d44c194f"
+  },
+  "pinecone": {
+    "collection": "Pinecone official website",
+    "url": "https://www.pinecone.io",
+    "license": "Pinecone trademark; unchanged standalone brandmark path extracted from official header SVG",
+    "sha256": "e69d0baa0bab566b4c11a35c47271c96635c3f271f674eefb2a80a61a2098452"
+  }
+}

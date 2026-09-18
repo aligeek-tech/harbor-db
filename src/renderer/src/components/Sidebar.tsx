@@ -1,3 +1,8 @@
+import { hasDatabaseContext } from '@shared/capabilities'
+import { isKeyValueEngine } from '@shared/key-value'
+import { Diagnostics } from './Diagnostics'
+import { ObjectInspector } from './ObjectInspector'
+import { isLocalEngine, localDatabasePath } from '@shared/local-database'
 import {
   useCallback,
   useDeferredValue,
@@ -33,18 +38,20 @@ import {
   Search,
   Settings2,
   Star,
+  Shield,
   Table2,
   Trash2,
   Upload,
   Zap,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import type { ConnectionProfile, ObjectInfo, TableStructure } from '@shared/contracts'
-import { qualifiedName } from '@shared/sql'
+import type { ConnectionProfile, ObjectInfo } from '@shared/contracts'
+import { qualifiedName, sqlDialect } from '@shared/sql'
+import { duplicateProfile, recentConnectionIds } from '@shared/connection-hub'
 import { useApp } from '../store'
 import { api } from '../lib/api'
 import { cn, engineNames, errorText, uid } from '../lib/utils'
-import { CopyButton, EngineIcon, ErrorPanel, IconButton, Loading, useConfirm } from './common'
+import { EngineIcon, ErrorPanel, IconButton, Loading, useConfirm } from './common'
 import { Button } from './ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog'
 import {
@@ -69,14 +76,12 @@ interface SidebarProps {
 type Inspection = {
   profile: ConnectionProfile
   object: ObjectInfo
-  structure?: TableStructure
-  error?: string
 }
 type DatabasePicker = { profile: ConnectionProfile; databases?: string[]; error?: string }
 const relational = (object: ObjectInfo) => ['table', 'view', 'materialized view'].includes(object.kind)
 const isDemo = (profile: ConnectionProfile) => profile.id.startsWith('demo-')
 const serverExplorer = (profile: ConnectionProfile) =>
-  !['redis', 'mongodb'].includes(profile.engine) && !profile.database
+  !['redis', 'valkey', 'neo4j', 'dynamodb', 'cassandra', 'influxdb', 'questdb', 'couchdb', 'mongodb', 'sqlite', 'duckdb', 'elasticsearch', 'opensearch', 'qdrant', 'milvus', 'weaviate', 'pinecone'].includes(profile.engine) && !profile.database
 const databaseKey = (id: string, database: string) => `${id}:database:${encodeURIComponent(database)}`
 const databaseSchemaKey = (id: string, database: string, schema: string) =>
   `${databaseKey(id, database)}:schema:${encodeURIComponent(schema)}`
@@ -90,6 +95,8 @@ const catalogContext = (profile: ConnectionProfile) =>
     profile.username,
     profile.tls,
     profile.ssh,
+    profile.sqlite,
+    profile.duckdb,
   ])
 function matches(value: string, search: string): boolean {
   const haystack = value.toLocaleLowerCase()
@@ -112,14 +119,7 @@ function withoutCredentials(
   updates: Partial<ConnectionProfile> = {},
 ): ConnectionProfile {
   return {
-    ...profile,
-    id: uid(),
-    name: `${profile.name} copy`.slice(0, 120),
-    favorite: false,
-    autoReconnect: false,
-    hasPassword: false,
-    hasSshPassword: false,
-    hasPassphrase: false,
+    ...duplicateProfile(profile, uid()),
     ...updates,
   }
 }
@@ -192,9 +192,12 @@ export function Sidebar({
   const sidebarWidth = useApp((s) => s.workspace.settings.sidebarWidth)
   const savedCount = useApp((s) => s.savedQueries.length)
   const historyCount = useApp((s) => s.history.length)
+  const history = useApp((s) => s.history)
   const section = useApp((s) => s.section)
   const selected = useApp((s) => s.selectedConnection)
   const [search, setSearch] = useState('')
+  const [hubView, setHubView] = useState<'all' | 'favorites' | 'recent'>('all')
+  const recent = useMemo(() => recentConnectionIds(history, statuses), [history, statuses])
   const filter = useDeferredValue(search.trim())
   const [loading, setLoading] = useState<Record<string, boolean>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -238,7 +241,7 @@ export function Sidebar({
         : schema
           ? `${profile.id}:schema:${schema}`
           : profile.id
-      if (['redis', 'mongodb'].includes(profile.engine) || isDemo(profile) || pending.current.has(requestKey))
+      if (['redis', 'valkey', 'neo4j', 'dynamodb', 'cassandra', 'influxdb', 'questdb', 'couchdb', 'mongodb', 'elasticsearch', 'opensearch', 'qdrant', 'milvus', 'weaviate', 'pinecone'].includes(profile.engine) || isDemo(profile) || pending.current.has(requestKey))
         return
       const state = useApp.getState()
       if (!force) {
@@ -331,7 +334,7 @@ export function Sidebar({
         !pending.current.has(profile.id)
       ) {
         for (const database of catalogs[profile.id] || []) {
-          const postgres = profile.engine === 'postgres'
+          const postgres = hasDatabaseContext(profile.engine)
           const key = postgres ? databaseKey(profile.id, database) : `${profile.id}:schema:${database}`
           const loaded = postgres ? loadedDatabases : loadedSchemas
           if (expanded.includes(key) && !loaded.current.get(profile.id)?.has(database) && !errors[key])
@@ -340,7 +343,7 @@ export function Sidebar({
       }
       if (
         expanded.includes(profile.id) &&
-        !(profile.engine === 'postgres' && !profile.database) &&
+        !(hasDatabaseContext(profile.engine) && !profile.database) &&
         objects[profile.id]?.length &&
         !expanded.includes(`${profile.id}:schemas-initialized`)
       ) {
@@ -357,9 +360,15 @@ export function Sidebar({
 
   const groups = useMemo(() => {
     const result = new Map<string, ConnectionProfile[]>()
-    for (const profile of profiles) {
+    const ordered =
+      hubView === 'recent'
+        ? [...profiles].sort((a, b) => recent.indexOf(a.id) - recent.indexOf(b.id))
+        : profiles
+    for (const profile of ordered) {
+      if (hubView === 'favorites' && !profile.favorite) continue
+      if (hubView === 'recent' && !recent.slice(0, 10).includes(profile.id)) continue
       const ownMatch = matches(
-        `${profile.name} ${profile.host} ${profile.database} ${profile.folder} ${profile.environment} ${profile.tags.join(' ')} ${engineNames[profile.engine]}`,
+        `${profile.name} ${profile.host} ${localDatabasePath(profile)} ${profile.database} ${profile.folder} ${profile.environment} ${profile.tags.join(' ')} ${engineNames[profile.engine]}`,
         filter,
       )
       if (
@@ -371,11 +380,14 @@ export function Sidebar({
         )
       )
         continue
-      const label = isDemo(profile)
-        ? 'Demo workspace'
-        : profile.favorite
-          ? 'Favorites'
-          : profile.folder || 'Connections'
+      const label =
+        hubView === 'recent'
+          ? 'Recent targets'
+          : isDemo(profile)
+            ? 'Demo workspace'
+            : profile.favorite
+              ? 'Favorites'
+              : profile.folder || 'Connections'
       result.set(label, [...(result.get(label) || []), profile])
     }
     return [...result.entries()].sort(([a], [b]) =>
@@ -389,14 +401,14 @@ export function Sidebar({
               ? -1
               : a.localeCompare(b),
     )
-  }, [profiles, objects, catalogs, filter])
+  }, [profiles, objects, catalogs, filter, hubView, recent])
 
   const run = (action: () => Promise<unknown>) => {
     void action().catch((error) => toast.error(errorText(error)))
   }
   const copy = (value: string) =>
     run(async () => {
-      await navigator.clipboard.writeText(value)
+      await api.copyText(value)
       toast.success('Copied to clipboard')
     })
 
@@ -488,16 +500,22 @@ export function Sidebar({
     if (name) await saveMetadata(profile, { folder: name.trim() })
   }
   function openQuery(profile: ConnectionProfile, object: ObjectInfo) {
-    const dialect = profile.engine === 'postgres' ? 'postgres' : 'mariadb'
+    const dialect = sqlDialect(profile.engine)
     const name = qualifiedName(object.schema, object.name, dialect)
     const literal = (value: string) => `'${value.replaceAll("'", "''")}'`
-    let sql = `SELECT *\nFROM ${name}\nLIMIT 200;`
+    let sql = dialect === 'mssql' ? `SELECT TOP (200) * FROM ${name};` : `SELECT *\nFROM ${name}\nLIMIT 200;`
     if (object.kind === 'function')
       sql =
         dialect === 'postgres'
           ? `SELECT pg_get_functiondef(p.oid)\nFROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace\nWHERE n.nspname = ${literal(object.schema)} AND p.proname = ${literal(object.name)};`
           : `SELECT ROUTINE_TYPE, ROUTINE_DEFINITION\nFROM information_schema.ROUTINES\nWHERE ROUTINE_SCHEMA = ${literal(object.schema)} AND ROUTINE_NAME = ${literal(object.name)};`
-    if (object.kind === 'trigger') sql = `SHOW CREATE TRIGGER ${name};`
+    if (object.kind === 'trigger')
+      sql =
+        dialect === 'sqlite'
+          ? `SELECT sql FROM main.sqlite_schema WHERE type = 'trigger' AND name = ${literal(object.name)};`
+          : dialect === 'mssql'
+            ? `SELECT OBJECT_DEFINITION(OBJECT_ID(N${literal(name)})) AS definition;`
+            : `SHOW CREATE TRIGGER ${name};`
     const state = useApp.getState()
     state.setSection('connections')
     state.openTab({
@@ -514,36 +532,11 @@ export function Sidebar({
       toast('Demo objects use example data. Connect a database to inspect its live structure.')
       return
     }
-    if (!relational(object)) {
+    if (object.kind === 'sequence' || (isLocalEngine(profile.engine) && !relational(object))) {
       openQuery(profile, object)
       return
     }
     setInspection({ profile, object })
-    try {
-      const structure = await api.structure({
-        connectionId: profile.id,
-        ...(object.database ? { database: object.database } : {}),
-        schema: object.schema,
-        table: object.name,
-      })
-      setInspection((current) =>
-        current?.profile.id === profile.id &&
-        current.object.name === object.name &&
-        current.object.schema === object.schema &&
-        current.object.database === object.database
-          ? { ...current, structure }
-          : current,
-      )
-    } catch (error) {
-      setInspection((current) =>
-        current?.profile.id === profile.id &&
-        current.object.name === object.name &&
-        current.object.schema === object.schema &&
-        current.object.database === object.database
-          ? { ...current, error: errorText(error) }
-          : current,
-      )
-    }
   }
   async function databases(profile: ConnectionProfile) {
     setDatabaseSearch('')
@@ -576,16 +569,12 @@ export function Sidebar({
         label={[database || profile.database, schema].filter(Boolean).join('.')}
       >
         {(object, index) => {
-          const name = qualifiedName(
-            object.schema,
-            object.name,
-            profile.engine === 'postgres' ? 'postgres' : 'mariadb',
-          )
+          const name = qualifiedName(object.schema, object.name, sqlDialect(profile.engine))
           const active =
             activeTab?.connectionId === profile.id &&
             activeTab.table === object.name &&
             activeTab.schema === object.schema &&
-            (profile.engine !== 'postgres' ||
+            (!hasDatabaseContext(profile.engine) ||
               (activeTab.database || profile.database) === (object.database || profile.database))
           return (
             <div
@@ -625,7 +614,11 @@ export function Sidebar({
                     )}
                     <DropdownMenuItem onSelect={() => run(() => inspect(profile, object))}>
                       <ListOrdered />
-                      {relational(object) ? 'Inspect structure' : 'Open definition query'}
+                      {object.kind === 'sequence' || (isLocalEngine(profile.engine) && !relational(object))
+                        ? 'Open definition query'
+                        : relational(object)
+                          ? 'Inspect structure'
+                          : 'Inspect definition'}
                     </DropdownMenuItem>
                     <DropdownMenuItem onSelect={() => openQuery(profile, object)}>
                       <FileCode2 />
@@ -643,7 +636,15 @@ export function Sidebar({
                       Copy qualified name
                     </DropdownMenuItem>
                     {relational(object) && (
-                      <DropdownMenuItem onSelect={() => copy(`SELECT * FROM ${name} LIMIT 200;`)}>
+                      <DropdownMenuItem
+                        onSelect={() =>
+                          copy(
+                            profile.engine === 'mssql'
+                              ? `SELECT TOP (200) * FROM ${name};`
+                              : `SELECT * FROM ${name} LIMIT 200;`,
+                          )
+                        }
+                      >
                         <FileCode2 />
                         Copy SELECT statement
                       </DropdownMenuItem>
@@ -654,7 +655,9 @@ export function Sidebar({
                           loadObjects(
                             profile,
                             true,
-                            profile.engine === 'mariadb' && !profile.database ? object.schema : undefined,
+                            ['mariadb', 'mysql'].includes(profile.engine) && !profile.database
+                              ? object.schema
+                              : undefined,
                             object.database,
                           ),
                         )
@@ -830,6 +833,22 @@ export function Sidebar({
             aria-label="Filter connections and loaded objects"
           />
         </label>
+        <label className="sidebar-connection-view">
+          <span className="sr-only">Connection view</span>
+          <select
+            aria-label="Connection view"
+            value={hubView}
+            onChange={(event) => setHubView(event.target.value as typeof hubView)}
+          >
+            <option value="all">All connections</option>
+            <option value="favorites">Favorites</option>
+            <option value="recent">Recent targets</option>
+          </select>
+          <ChevronDown className="sidebar-connection-chevron" aria-hidden="true" />
+        </label>
+        {hubView === 'recent' && (
+          <p className="group-subtitle">Recent retained queries and successful connections this session.</p>
+        )}
         <div className="sidebar-body">
           {!groups.length && (
             <>
@@ -842,7 +861,9 @@ export function Sidebar({
               <p className="group-subtitle">
                 {filter
                   ? 'No matching connections or loaded objects.'
-                  : 'Your databases, in one place. Add a connection to get started.'}
+                  : hubView !== 'all'
+                    ? `No ${hubView} connections yet. Choose All connections to browse saved profiles.`
+                    : 'Your databases, in one place. Add a connection to get started.'}
               </p>
               {!filter && (
                 <Button variant="outline" size="sm" onClick={onNewConnection}>
@@ -869,7 +890,7 @@ export function Sidebar({
               </div>
               {items.map((profile) => {
                 const allDatabases = serverExplorer(profile)
-                const postgresServer = allDatabases && profile.engine === 'postgres'
+                const postgresServer = allDatabases && hasDatabaseContext(profile.engine)
                 const status = statuses[profile.id]?.state || 'disconnected'
                 const connected = status === 'connected'
                 const connecting = status === 'connecting' || status === 'reconnecting'
@@ -879,7 +900,7 @@ export function Sidebar({
                   ? catalogs[profile.id] !== undefined
                   : objects[profile.id] !== undefined
                 const ownMatch = matches(
-                  `${profile.name} ${profile.host} ${profile.database} ${profile.folder} ${profile.environment}`,
+                  `${profile.name} ${profile.host} ${localDatabasePath(profile)} ${profile.database} ${profile.folder} ${profile.environment}`,
                   filter,
                 )
                 const filtered =
@@ -920,7 +941,7 @@ export function Sidebar({
                       <button
                         type="button"
                         className="connection-name"
-                        title={`${profile.name}\n${engineNames[profile.engine]} · ${profile.host}:${profile.port}\n${profile.environment} · ${status}`}
+                        title={`${profile.name}\n${engineNames[profile.engine]} · ${isLocalEngine(profile.engine) ? localDatabasePath(profile) : `${profile.host}:${profile.port}`}\n${profile.environment} · ${status}`}
                         onClick={() => {
                           const state = useApp.getState()
                           state.selectConnection(profile.id)
@@ -935,6 +956,12 @@ export function Sidebar({
                         <EngineIcon engine={profile.engine} />
                         <span>{profile.name}</span>
                       </button>
+                      {profile.environment === 'production' && (
+                        <small className="warning flex items-center gap-1" title="Production environment">
+                          <Shield aria-hidden="true" />
+                          Production
+                        </small>
+                      )}
                       <span
                         className={cn('status-dot', status)}
                         title={status}
@@ -955,9 +982,9 @@ export function Sidebar({
                             <DropdownMenuLabel>{profile.name}</DropdownMenuLabel>
                             <DropdownMenuItem onSelect={() => onNewQuery(profile)}>
                               <FileCode2 />
-                              New {profile.engine === 'redis' ? 'console' : 'query'}
+                              New {isKeyValueEngine(profile.engine) ? 'console' : ['elasticsearch', 'opensearch', 'qdrant', 'milvus', 'weaviate', 'pinecone'].includes(profile.engine) ? 'search' : 'query'}
                             </DropdownMenuItem>
-                            {!isDemo(profile) && (
+                            {!isDemo(profile) && !['qdrant', 'milvus', 'weaviate', 'pinecone'].includes(profile.engine) && (
                               <>
                                 <DropdownMenuItem
                                   disabled={connecting}
@@ -974,7 +1001,7 @@ export function Sidebar({
                                     Reconnect
                                   </DropdownMenuItem>
                                 )}
-                                {!['redis', 'mongodb'].includes(profile.engine) && (
+                                {!['redis', 'valkey', 'neo4j', 'dynamodb', 'cassandra', 'influxdb', 'questdb', 'couchdb', 'mongodb', 'sqlite', 'duckdb', 'elasticsearch', 'opensearch', 'qdrant', 'milvus', 'weaviate', 'pinecone'].includes(profile.engine) && (
                                   <DropdownMenuItem
                                     disabled={!connected}
                                     onSelect={() => run(() => databases(profile))}
@@ -986,7 +1013,7 @@ export function Sidebar({
                               </>
                             )}
                           </DropdownMenuGroup>
-                          {!isDemo(profile) && (
+                          {!isDemo(profile) && !['qdrant', 'milvus', 'weaviate', 'pinecone'].includes(profile.engine) && (
                             <>
                               <DropdownMenuSeparator />
                               <DropdownMenuGroup>
@@ -1020,9 +1047,19 @@ export function Sidebar({
                                     Remove from group
                                   </DropdownMenuItem>
                                 )}
-                                <DropdownMenuItem onSelect={() => copy(`${profile.host}:${profile.port}`)}>
+                                <DropdownMenuItem
+                                  onSelect={() =>
+                                    copy(
+                                      isLocalEngine(profile.engine)
+                                        ? localDatabasePath(profile)
+                                        : `${profile.host}:${profile.port}`,
+                                    )
+                                  }
+                                >
                                   <Copy />
-                                  Copy host and port
+                                  {isLocalEngine(profile.engine)
+                                    ? 'Copy database file path'
+                                    : 'Copy host and port'}
                                 </DropdownMenuItem>
                               </DropdownMenuGroup>
                               <DropdownMenuSeparator />
@@ -1044,19 +1081,26 @@ export function Sidebar({
                       <div className="tree-level">
                         {connected ? (
                           <>
+                            {!isDemo(profile) && !['qdrant', 'milvus', 'weaviate', 'pinecone'].includes(profile.engine) && (
+                              <Diagnostics profile={profile} database={profile.database || undefined} />
+                            )}
                             <div className="tree-label">
                               <Database />
                               <span className="truncate" title={profile.database}>
-                                {profile.engine === 'redis'
+                                {isKeyValueEngine(profile.engine)
                                   ? `Database ${profile.redisDb}`
+                                  : profile.engine === 'dynamodb' ? profile.dynamo.region
+                                  : ['elasticsearch', 'opensearch', 'qdrant', 'milvus', 'weaviate', 'pinecone'].includes(profile.engine) ? (['qdrant', 'milvus', 'weaviate', 'pinecone'].includes(profile.engine) ? 'Vector collections / indexes' : 'Search indices')
                                   : allDatabases
                                     ? 'Databases'
-                                    : profile.database || 'Default database'}
+                                    : isLocalEngine(profile.engine)
+                                      ? 'main'
+                                      : profile.database || 'Default database'}
                               </span>
                               <span className="ml-auto" title={`${profile.environment} environment`}>
                                 {profile.environment}
                               </span>
-                              {!['redis', 'mongodb'].includes(profile.engine) && (
+                              {!['redis', 'valkey', 'neo4j', 'dynamodb', 'cassandra', 'influxdb', 'questdb', 'couchdb', 'mongodb', 'elasticsearch', 'opensearch', 'qdrant', 'milvus', 'weaviate', 'pinecone'].includes(profile.engine) && (
                                 <IconButton
                                   label={`Refresh ${profile.name} objects`}
                                   disabled={loading[profile.id]}
@@ -1066,14 +1110,14 @@ export function Sidebar({
                                 </IconButton>
                               )}
                             </div>
-                            {['redis', 'mongodb'].includes(profile.engine) ? (
+                            {['redis', 'valkey', 'neo4j', 'dynamodb', 'cassandra', 'influxdb', 'questdb', 'couchdb', 'mongodb', 'elasticsearch', 'opensearch', 'qdrant', 'milvus', 'weaviate', 'pinecone'].includes(profile.engine) ? (
                               <button
                                 type="button"
                                 className="object-row"
                                 onClick={() => {
                                   const state = useApp.getState()
                                   state.setSection('connections')
-                                  const kind = profile.engine === 'mongodb' ? 'mongo' : 'redis'
+                                  const kind = ['influxdb','questdb'].includes(profile.engine) ? 'timeseries' : ['elasticsearch', 'opensearch', 'qdrant', 'milvus', 'weaviate', 'pinecone'].includes(profile.engine) ? 'search' : profile.engine === 'mongodb' ? 'mongo' : profile.engine === 'couchdb' ? 'couch' : profile.engine === 'cassandra' ? 'cql' : profile.engine === 'dynamodb' ? 'dynamodb' : profile.engine === 'neo4j' ? 'neo4j' : 'redis'
                                   const existing = state.workspace.tabs.find(
                                     (tab) => tab.connectionId === profile.id && tab.kind === kind,
                                   )
@@ -1082,14 +1126,14 @@ export function Sidebar({
                                     state.openTab({
                                       connectionId: profile.id,
                                       kind,
-                                      title: kind === 'mongo' ? 'MongoDB documents' : 'Keys',
-                                      sql: kind === 'mongo' ? '{}' : '',
+                                      title: kind === 'timeseries' ? engineNames[profile.engine]+' time series' : kind === 'search' ? `${engineNames[profile.engine]} ${['qdrant', 'milvus', 'weaviate', 'pinecone'].includes(profile.engine) ? 'vectors' : 'search'}` : kind === 'mongo' ? 'MongoDB documents' : kind === 'couch' ? 'CouchDB documents' : kind === 'cql' ? 'Cassandra CQL' : kind === 'dynamodb' ? 'DynamoDB items' : kind === 'neo4j' ? 'Neo4j Cypher' : 'Keys',
+                                      sql: kind === 'search' ? (['qdrant', 'milvus', 'weaviate', 'pinecone'].includes(profile.engine) ? '[]' : '{"query":{"match_all":{}}}') : kind === 'mongo' ? '{}' : '',
                                     })
                                 }}
                               >
                                 <KeyRound />
                                 <span>
-                                  {profile.engine === 'mongodb' ? 'Browse collections' : 'Browse keys'}
+                                  {['influxdb','questdb'].includes(profile.engine) ? 'Browse time series' : ['elasticsearch', 'opensearch', 'qdrant', 'milvus', 'weaviate', 'pinecone'].includes(profile.engine) ? (['qdrant', 'milvus', 'weaviate', 'pinecone'].includes(profile.engine) ? 'Browse collections & vector search' : 'Browse indices & search') : profile.engine === 'mongodb' ? 'Browse collections' : profile.engine === 'couchdb' ? 'Browse documents' : profile.engine === 'cassandra' ? 'Browse keyspaces & CQL' : profile.engine === 'dynamodb' ? 'Browse items' : profile.engine === 'neo4j' ? 'Browse graph' : 'Browse keys'}
                                 </span>
                                 <ChevronRight className="ml-auto" />
                               </button>
@@ -1208,12 +1252,12 @@ export function Sidebar({
                                           ? 'No matching loaded objects.'
                                           : allDatabases
                                             ? 'No databases are visible to this account.'
-                                            : profile.engine === 'postgres'
+                                            : hasDatabaseContext(profile.engine)
                                               ? `No user objects found in ${profile.database || 'the connected database'}.`
                                               : 'No tables, views, routines, or triggers are visible in this database.'}
                                       </p>
                                       {!filter &&
-                                        profile.engine === 'postgres' &&
+                                        hasDatabaseContext(profile.engine) &&
                                         !allDatabases &&
                                         !isDemo(profile) && (
                                           <>
@@ -1316,79 +1360,13 @@ export function Sidebar({
           }}
         />
       </aside>
-      <Dialog
-        open={!!inspection}
-        onOpenChange={(open) => {
-          if (!open) setInspection(null)
-        }}
-      >
-        <DialogContent className="sm:max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>
-              {inspection?.object.database ? `${inspection.object.database}.` : ''}
-              {inspection?.object.schema}.{inspection?.object.name}
-            </DialogTitle>
-            <DialogDescription>
-              {inspection?.profile.name} · {inspection?.object.kind} structure
-            </DialogDescription>
-          </DialogHeader>
-          {inspection?.error ? (
-            <ErrorPanel message={inspection.error} />
-          ) : inspection?.structure ? (
-            <div className="flex flex-col gap-5">
-              <div className="overflow-auto">
-                <table className="w-full text-left text-xs">
-                  <thead>
-                    <tr>
-                      <th className="pb-3">Column</th>
-                      <th className="pb-3">Type</th>
-                      <th className="pb-3">Null</th>
-                      <th className="pb-3">Default</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {inspection.structure.columns.map((column) => (
-                      <tr key={column.name} className="border-t">
-                        <td className="py-2 pr-4 mono">
-                          {column.primaryKey ? '◆ ' : ''}
-                          {column.name}
-                        </td>
-                        <td className="py-2 pr-4 mono">{column.type}</td>
-                        <td className="py-2 pr-4">{column.nullable ? 'Allowed' : 'Not null'}</td>
-                        <td className="py-2 mono">{column.defaultValue ?? '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <details>
-                <summary>Indexes & constraints</summary>
-                <div className="flex flex-col gap-3 pt-3">
-                  {[...inspection.structure.indexes, ...inspection.structure.constraints].map(
-                    (item, index) => (
-                      <div key={`${item.name}:${index}`}>
-                        <strong className="text-xs">{item.name}</strong>
-                        <pre className="mono whitespace-pre-wrap text-xs">{item.definition}</pre>
-                      </div>
-                    ),
-                  )}
-                </div>
-              </details>
-              <div>
-                <div className="flex items-center justify-between">
-                  <span>Definition</span>
-                  <CopyButton value={inspection.structure.ddl} label="Copy object definition" />
-                </div>
-                <pre className="mono max-h-60 overflow-auto whitespace-pre-wrap rounded-md border p-3 text-xs">
-                  {inspection.structure.ddl}
-                </pre>
-              </div>
-            </div>
-          ) : (
-            <Loading text="Reading live structure…" />
-          )}
-        </DialogContent>
-      </Dialog>
+      {inspection && (
+        <ObjectInspector
+          profile={inspection.profile}
+          object={inspection.object}
+          onClose={() => setInspection(null)}
+        />
+      )}
       <Dialog
         open={!!picker}
         onOpenChange={(open) => {
@@ -1399,7 +1377,7 @@ export function Sidebar({
           <DialogHeader>
             <DialogTitle>Open another database</DialogTitle>
             <DialogDescription>
-              {picker?.profile.engine === 'postgres' && !picker.profile.database
+              {!!picker && hasDatabaseContext(picker.profile.engine) && !picker.profile.database
                 ? 'Open a query bound to this database using the saved connection. Your other tabs keep their database.'
                 : 'A database gets its own connection profile and tab context. Review its details and authentication before connecting.'}
             </DialogDescription>
@@ -1424,7 +1402,10 @@ export function Sidebar({
                       disabled={database === picker.profile.database}
                       className="justify-start"
                       onClick={() => {
-                        if (picker.profile.engine === 'postgres' && !picker.profile.database) {
+                        if (
+                          hasDatabaseContext(picker.profile.engine) &&
+                          !picker.profile.database
+                        ) {
                           const profile = picker.profile
                           setPicker(null)
                           onNewQuery(profile, database)

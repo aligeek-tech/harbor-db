@@ -15,20 +15,26 @@ import {
   Filter,
   KeyRound,
   PanelRight,
-  Pin,
   Search,
   Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Cell, ResultSet, WorkspaceTab } from '@shared/contracts'
-import { compareCells } from '@shared/result-sort'
+import {
+  compareGridRows,
+  gridClipboard,
+  gridColumnLabel,
+  inspectCell,
+  matchesGridFilter,
+  type GridFilter,
+  type GridSort,
+} from '@shared/result-grid'
 import { api } from '../lib/api'
 import { cn, displayCell, errorText } from '../lib/utils'
 import { useApp } from '../store'
 import { Button } from './ui/button'
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
@@ -37,6 +43,8 @@ import {
   DropdownMenuTrigger,
 } from './ui/dropdown-menu'
 import { CopyButton, IconButton } from './common'
+import { GridColumnManager, GridViewOptions } from './GridControls'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog'
 interface GridProps {
   set: ResultSet
   tab: WorkspaceTab
@@ -74,16 +82,31 @@ export function DataGrid({
   selectionDisabled = false,
   deleteDisabled = false,
 }: GridProps) {
-  const [localSort, setLocalSort] = useState<{ column: string; index: number; direction: 'asc' | 'desc' }>()
+  const [localSorts, setLocalSorts] = useState<GridSort[]>([])
+  const [localFilters, setLocalFilters] = useState<GridFilter[]>([])
+  const [filterMatch, setFilterMatch] = useState<'all' | 'any'>('all')
+  const [columnManager, setColumnManager] = useState(false)
+  const [viewOptions, setViewOptions] = useState(false)
+  const [viewer, setViewer] = useState<{ value: Cell; column: number } | null>(null)
+  const [viewerMode, setViewerMode] = useState<'raw' | 'json' | 'hex'>('raw')
   const remoteSort = serverSort || !!onSort
-  const activeSort = remoteSort ? sort : localSort
-  const chooseSort = (index: number, direction: 'asc' | 'desc') => {
+  const sortFor = (index: number) =>
+    remoteSort
+      ? sort?.column === set.columns[index].name
+        ? sort
+        : undefined
+      : localSorts.find((item) => item.index === index && item.column === set.columns[index].name)
+  const chooseSort = (index: number, direction: 'asc' | 'desc', append = false) => {
     const column = set.columns[index].name
     if (remoteSort) onSort?.(column, direction)
-    else setLocalSort({ column, index, direction })
+    else
+      setLocalSorts((previous) =>
+        append
+          ? [...previous.filter((item) => item.index !== index), { column, index, direction }].slice(-8)
+          : [{ column, index, direction }],
+      )
   }
-  const isSorted = (index: number) =>
-    activeSort?.column === set.columns[index].name && (remoteSort || localSort?.index === index)
+  const isSorted = (index: number) => !!sortFor(index)
   const inspector = useApp((s) => s.workspace.settings.inspectorOpen)
   const density = useApp((s) => s.workspace.settings.density)
   const [filter, setFilter] = useState('')
@@ -129,19 +152,15 @@ export function DataGrid({
         .filter(
           (r) => !filter || r.values.some((v) => displayCell(v).toLowerCase().includes(filter.toLowerCase())),
         )
-        .sort((a, b) => {
-          if (remoteSort || !localSort) return 0
-          const index = localSort.index
-          if (set.columns[index]?.name !== localSort.column) return 0
-          return (
-            compareCells(
-              a.values[index],
-              b.values[index],
-              /int|numeric|decimal|float|double|real/i.test(set.columns[index].type),
-            ) * (localSort.direction === 'asc' ? 1 : -1)
-          )
-        }),
-    [set.rows, set.columns, filter, remoteSort, localSort],
+        .filter(
+          (row) =>
+            !localFilters.length ||
+            (filterMatch === 'all'
+              ? localFilters.every((condition) => matchesGridFilter(row.values, set.columns, condition))
+              : localFilters.some((condition) => matchesGridFilter(row.values, set.columns, condition))),
+        )
+        .sort((a, b) => compareGridRows(a, b, set.columns, remoteSort ? [] : localSorts)),
+    [set.rows, set.columns, filter, remoteSort, localSorts, localFilters, filterMatch],
   )
   const rows = useMemo(() => filtered.map((r) => r.values), [filtered])
   const filteredPositions = useMemo(
@@ -194,13 +213,46 @@ export function DataGrid({
     columnResizeMode: 'onChange',
   })
   const model = table.getRowModel().rows
-  const visibleColumns = table.getVisibleLeafColumns()
+  const unpinnedColumns = table.getVisibleLeafColumns()
+  const visiblePinned = pinned.filter((id) => unpinnedColumns.some((column) => column.id === id))
+  const visibleColumns = [
+    ...visiblePinned.map((id) => table.getColumn(id)!),
+    ...unpinnedColumns.filter((column) => !visiblePinned.includes(column.id)),
+  ]
+  const [headerHeight, setHeaderHeight] = useState(44)
+  const [minimumGridHeight, setMinimumGridHeight] = useState(240)
+  const showSelectionBar = checkedIndices.length > 0 || !!onDeleteSelected || !!onEdit
+  useEffect(() => {
+    const scroller = container.current
+    const region = scroller?.parentElement
+    const header = scroller?.querySelector('thead')
+    if (!scroller || !region || !header) return
+    const chrome = [...region.children].filter((element) => element !== scroller)
+    const measure = () => {
+      const measuredHeader = Math.ceil(header.getBoundingClientRect().height)
+      // Centered scroll-into-view must land below the sticky header, with a full row visible.
+      const minimumViewport = Math.max(128, measuredHeader * 2 + 32)
+      setHeaderHeight(measuredHeader)
+      setMinimumGridHeight(
+        Math.ceil(
+          chrome.reduce((height, element) => height + element.getBoundingClientRect().height, 0) +
+            minimumViewport,
+        ),
+      )
+    }
+    const observer = new ResizeObserver(measure)
+    observer.observe(header)
+    chrome.forEach((element) => observer.observe(element))
+    measure()
+    return () => observer.disconnect()
+  }, [showSelectionBar])
   const virtual = useVirtualizer({
     count: model.length,
     getScrollElement: () => container.current,
     estimateSize: () => (density === 'compact' ? 25 : 31),
     overscan: 12,
-    scrollMargin: 44,
+    scrollMargin: headerHeight,
+    scrollPaddingStart: headerHeight,
   })
   useEffect(() => {
     const timeout = setTimeout(
@@ -258,9 +310,9 @@ export function DataGrid({
     r <= Math.max(rangeStart, rangeEnd) &&
     c >= Math.min(selection.col, selection.endCol) &&
     c <= Math.max(selection.col, selection.endCol)
-  async function copy() {
+  async function copy(format: 'tsv' | 'csv' | 'json' = 'tsv', wholeRows = false) {
     if (!checkedIndices.length || !visibleColumns.length) return
-    const cellRange = selection && rangeStart !== undefined && rangeEnd !== undefined
+    const cellRange = !wholeRows && selection && rangeStart !== undefined && rangeEnd !== undefined
     const copyRows = cellRange
       ? filtered
           .slice(Math.min(rangeStart, rangeEnd), Math.max(rangeStart, rangeEnd) + 1)
@@ -274,11 +326,17 @@ export function DataGrid({
         )
       : visibleColumns
     if (!copyRows.length || !copyColumns.length) return
-    const output = copyRows
-      .map((row) => copyColumns.map((c) => displayCell(row[Number(c.id)])).join('\t'))
-      .join('\n')
-    await navigator.clipboard.writeText(output)
-    toast.success('Selection copied')
+    try {
+      const output = gridClipboard(
+        format,
+        copyColumns.map((column) => set.columns[Number(column.id)]),
+        copyRows.map((row) => copyColumns.map((column) => row[Number(column.id)])),
+      )
+      await api.copyText(output)
+      toast.success(`${wholeRows ? 'Selected rows' : 'Selection'} copied as ${format.toUpperCase()}`)
+    } catch (cause) {
+      toast.error(errorText(cause))
+    }
   }
   async function exportData(format: 'csv' | 'json', scope: 'loaded results' | 'selected rows') {
     if (scope === 'selected rows' && !checkedIndices.length) return
@@ -302,15 +360,15 @@ export function DataGrid({
           position: 'sticky' as const,
           left:
             rowHeaderWidth +
-            pinned
-              .slice(0, pinned.indexOf(id))
+            visiblePinned
+              .slice(0, visiblePinned.indexOf(id))
               .reduce((sum, p) => sum + (table.getColumn(p)?.getSize() || 0), 0),
           zIndex: 3,
           background: 'var(--raised)',
         }
       : {}
   return (
-    <div className="results-content">
+    <div className="results-content" style={{ minHeight: minimumGridHeight }}>
       <div className="data-region">
         <div className="grid-toolbar">
           <div className="filter-input">
@@ -327,6 +385,10 @@ export function DataGrid({
               <Filter />
             </IconButton>
           )}
+          <Button variant="outline" size="sm" onClick={() => setViewOptions(true)}>
+            <Filter />
+            Loaded-page view{localFilters.length ? ` (${localFilters.length})` : ''}
+          </Button>
           <div className="toolbar-spacer" />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -360,40 +422,10 @@ export function DataGrid({
               </DropdownMenuGroup>
             </DropdownMenuContent>
           </DropdownMenu>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">
-                <Columns3 />
-                Columns
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Show columns · drag headers to reorder</DropdownMenuLabel>
-              <DropdownMenuGroup>
-                {table.getAllLeafColumns().map((c) => (
-                  <DropdownMenuCheckboxItem
-                    key={c.id}
-                    checked={c.getIsVisible()}
-                    onSelect={(e) => e.preventDefault()}
-                    onCheckedChange={(v) => c.toggleVisibility(!!v)}
-                  >
-                    {set.columns[Number(c.id)].name}
-                  </DropdownMenuCheckboxItem>
-                ))}
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onSelect={() => {
-                    const col = selection && visibleColumns[selection.col]?.id
-                    if (col) setPinned((p) => (p.includes(col) ? p.filter((x) => x !== col) : [...p, col]))
-                  }}
-                >
-                  <Pin />
-                  Pin / unpin selected column
-                </DropdownMenuItem>
-              </DropdownMenuGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          {!remoteSort && localSort && <span className="field-note">Sorted loaded rows only</span>}
+          <Button variant="outline" size="sm" onClick={() => setColumnManager(true)}>
+            <Columns3 />
+            Columns
+          </Button>
           <IconButton
             label={inspector ? 'Hide inspector' : 'Show inspector'}
             onClick={() => useApp.getState().setSettings({ inspectorOpen: !inspector })}
@@ -401,7 +433,14 @@ export function DataGrid({
             <PanelRight />
           </IconButton>
         </div>
-        {(checkedIndices.length > 0 || onDeleteSelected || onEdit) && (
+        <div className="hint-bar">
+          {remoteSort
+            ? 'Column-header sort: server-side.'
+            : `Sort: loaded rows only${localSorts.length ? ` · ${localSorts.length} column priority` : ''}.`}{' '}
+          Filters here cover loaded rows. Exports include all original loaded columns; JSON preserves types
+          and duplicate names.
+        </div>
+        {showSelectionBar && (
           <div className="grid-selection-bar">
             <span role="status">
               {checkedIndices.length} {checkedIndices.length === 1 ? 'row' : 'rows'} selected
@@ -421,6 +460,40 @@ export function DataGrid({
               Clear selection
             </Button>
             <div className="toolbar-spacer" />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" disabled={!checkedIndices.length}>
+                  Copy
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuLabel>Loaded selection · visible columns</DropdownMenuLabel>
+                <DropdownMenuGroup>
+                  <DropdownMenuItem onSelect={() => void copy()}>Copy cells · TSV</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => void copy('csv')}>Copy cells · CSV</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => void copy('json')}>Copy cells · JSON</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => void copy('json', true)}>
+                    Copy selected rows · JSON
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!selection || !selected || !visibleColumns[selection.endCol]}
+              onClick={() => {
+                if (selection && selected && visibleColumns[selection.endCol]) {
+                  setViewer({
+                    value: selected[Number(visibleColumns[selection.endCol].id)],
+                    column: Number(visibleColumns[selection.endCol].id),
+                  })
+                  setViewerMode('raw')
+                }
+              }}
+            >
+              View cell
+            </Button>
             {onDeleteSelected && (
               <Button
                 variant="destructive"
@@ -437,8 +510,9 @@ export function DataGrid({
         <div
           ref={container}
           className="table-scroll"
+          style={{ scrollPaddingTop: headerHeight }}
           tabIndex={0}
-          aria-label="Query results. Arrow keys navigate; Shift selects a range; Control C copies."
+          aria-label="Query results. Arrow keys navigate; Shift selects a range; Control or Command C copies."
           onKeyDown={(e) => {
             if (e.target instanceof HTMLElement && e.target.closest('input, button, select, textarea')) return
             const cursor = selection?.endRow ?? selectionAnchor.current
@@ -498,7 +572,7 @@ export function DataGrid({
                     key={c.id}
                     aria-sort={
                       isSorted(Number(c.id))
-                        ? activeSort?.direction === 'asc'
+                        ? sortFor(Number(c.id))?.direction === 'asc'
                           ? 'ascending'
                           : 'descending'
                         : 'none'
@@ -510,38 +584,52 @@ export function DataGrid({
                     onDrop={(e) => {
                       e.preventDefault()
                       const from = e.dataTransfer.getData('text/harbor-column')
+                      if (!table.getAllLeafColumns().some((column) => column.id === from) || from === c.id)
+                        return
                       const list = table
                         .getAllLeafColumns()
                         .map((x) => x.id)
                         .filter((x) => x !== from)
                       list.splice(list.indexOf(c.id), 0, from)
                       setOrder(list)
+                      setSelection(null)
                     }}
                   >
                     <div className="flex items-center gap-1">
                       <button
                         className="column-name flex min-w-0 items-center gap-1 text-left"
                         disabled={remoteSort && !onSort}
-                        onClick={() =>
+                        title={
+                          remoteSort
+                            ? 'Sort on server'
+                            : 'Sort loaded rows. Shift-click adds a sort priority.'
+                        }
+                        onClick={(event) =>
                           chooseSort(
                             Number(c.id),
-                            isSorted(Number(c.id)) && activeSort?.direction === 'asc' ? 'desc' : 'asc',
+                            isSorted(Number(c.id)) && sortFor(Number(c.id))?.direction === 'asc'
+                              ? 'desc'
+                              : 'asc',
+                            event.shiftKey,
                           )
                         }
                       >
                         {set.columns[Number(c.id)].key && <KeyRound />}
                         <span className="truncate">{set.columns[Number(c.id)].name}</span>
+                        {!remoteSort && localSorts.length > 1 && isSorted(Number(c.id)) && (
+                          <sup>{localSorts.findIndex((item) => item.index === Number(c.id)) + 1}</sup>
+                        )}
                       </button>
                       <span className="column-sort-actions">
                         {(['asc', 'desc'] as const).map((direction) => (
                           <button
                             key={direction}
                             type="button"
-                            aria-label={`Sort ${set.columns[Number(c.id)].name} ${direction === 'asc' ? 'ascending' : 'descending'}`}
+                            aria-label={`Sort ${gridColumnLabel(set.columns, Number(c.id))} ${direction === 'asc' ? 'ascending' : 'descending'}`}
                             title={`${direction === 'asc' ? 'Ascending' : 'Descending'} · ${remoteSort ? 'server-side sort' : 'loaded rows only'}`}
-                            aria-pressed={isSorted(Number(c.id)) && activeSort?.direction === direction}
+                            aria-pressed={sortFor(Number(c.id))?.direction === direction}
                             disabled={remoteSort && !onSort}
-                            onClick={() => chooseSort(Number(c.id), direction)}
+                            onClick={(event) => chooseSort(Number(c.id), direction, event.shiftKey)}
                           >
                             {direction === 'asc' ? <ArrowUp /> : <ArrowDown />}
                           </button>
@@ -567,11 +655,14 @@ export function DataGrid({
             </thead>
             <tbody>
               {virtual.getVirtualItems().length > 0 && (
-                <tr aria-hidden style={{ height: Math.max(0, virtual.getVirtualItems()[0].start - 44) }}>
+                <tr
+                  aria-hidden
+                  style={{ height: Math.max(0, virtual.getVirtualItems()[0].start - headerHeight) }}
+                >
                   <td
                     colSpan={visibleColumns.length + 2}
                     style={{
-                      height: Math.max(0, virtual.getVirtualItems()[0].start - 44),
+                      height: Math.max(0, virtual.getVirtualItems()[0].start - headerHeight),
                       padding: 0,
                       border: 0,
                     }}
@@ -647,7 +738,7 @@ export function DataGrid({
                     style={{
                       height: Math.max(
                         0,
-                        virtual.getTotalSize() - (virtual.getVirtualItems().at(-1)?.end || 0) + 44,
+                        virtual.getTotalSize() - (virtual.getVirtualItems().at(-1)?.end || 0) + headerHeight,
                       ),
                       padding: 0,
                       border: 0,
@@ -660,16 +751,16 @@ export function DataGrid({
           {rows.length === 0 && (
             <div className="center-empty">
               <Search />
-              <h3>{filter ? 'No matching rows' : 'No rows returned'}</h3>
+              <h3>{filter || localFilters.length ? 'No matching rows' : 'No rows returned'}</h3>
               <p>
-                {filter
+                {filter || localFilters.length
                   ? 'Try a different filter. This search includes only loaded rows.'
                   : 'The statement completed without returning data rows.'}
               </p>
             </div>
           )}
         </div>
-        {filter && (
+        {(filter || localFilters.length > 0) && (
           <div className="hint-bar">
             {rows.length} matching rows in {set.rows.length} loaded results
           </div>
@@ -694,6 +785,17 @@ export function DataGrid({
                   <small>{column.type}</small>
                 </label>
                 <CopyButton value={displayCell(selected[index])} />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label={`View complete ${gridColumnLabel(set.columns, index)} value`}
+                  onClick={() => {
+                    setViewer({ value: selected[index], column: index })
+                    setViewerMode('raw')
+                  }}
+                >
+                  View
+                </Button>
                 <div className={`inspector-value ${selected[index] === null ? 'muted' : ''}`}>
                   {displayCell(selected[index]) || "''"}
                 </div>
@@ -703,6 +805,89 @@ export function DataGrid({
             <p className="field-note">Select a cell to inspect its complete value.</p>
           )}
         </aside>
+      )}
+      {columnManager && (
+        <GridColumnManager
+          columns={set.columns}
+          items={table.getAllLeafColumns().map((column) => ({
+            id: column.id,
+            width: column.getSize(),
+            visible: column.getIsVisible(),
+            pinned: pinned.includes(column.id),
+          }))}
+          onClose={() => setColumnManager(false)}
+          onChange={(id, patch) => {
+            setSelection(null)
+            if (patch.visible !== undefined) table.getColumn(id)?.toggleVisibility(patch.visible)
+            if (patch.width !== undefined) setWidths((current) => ({ ...current, [id]: patch.width! }))
+            if (patch.pinned !== undefined)
+              setPinned((current) =>
+                patch.pinned
+                  ? [...current.filter((item) => item !== id), id]
+                  : current.filter((item) => item !== id),
+              )
+          }}
+          onMove={(id, delta) => {
+            const list = table.getAllLeafColumns().map((column) => column.id)
+            const from = list.indexOf(id)
+            const to = from + delta
+            if (from < 0 || to < 0 || to >= list.length) return
+            ;[list[from], list[to]] = [list[to], list[from]]
+            setOrder(list)
+            setSelection(null)
+          }}
+        />
+      )}
+      {viewOptions && (
+        <GridViewOptions
+          columns={set.columns}
+          filters={localFilters}
+          match={filterMatch}
+          sorts={localSorts}
+          remoteSort={remoteSort}
+          onFilters={(filters, match) => {
+            setLocalFilters(filters)
+            setFilterMatch(match)
+          }}
+          onSorts={setLocalSorts}
+          onClose={() => setViewOptions(false)}
+        />
+      )}
+      {viewer && (
+        <Dialog open onOpenChange={(open) => !open && setViewer(null)}>
+          <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
+            <DialogHeader>
+              <DialogTitle>Cell value · {gridColumnLabel(set.columns, viewer.column)}</DialogTitle>
+              <DialogDescription>
+                {set.columns[viewer.column].type} · complete loaded cell. Previewing never changes the value.
+              </DialogDescription>
+            </DialogHeader>
+            <select
+              aria-label="Cell viewer format"
+              value={viewerMode}
+              onChange={(event) => setViewerMode(event.target.value as typeof viewerMode)}
+            >
+              <option value="raw">
+                {viewer.value && typeof viewer.value === 'object' ? 'Base64' : 'Raw / multiline'}
+              </option>
+              {viewer.value && typeof viewer.value === 'object' ? (
+                <option value="hex">Hexadecimal</option>
+              ) : (
+                <option value="json">Formatted JSON</option>
+              )}
+            </select>
+            <pre
+              aria-label="Complete cell value"
+              className="max-h-96 overflow-auto whitespace-pre-wrap break-all rounded border p-3"
+            >
+              {inspectCell(viewer.value, viewerMode)}
+            </pre>
+            <CopyButton value={gridClipboard('json', [set.columns[viewer.column]], [[viewer.value]])} />
+            <p className="field-note">
+              Copy uses typed JSON to distinguish NULL, empty text and binary values.
+            </p>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   )

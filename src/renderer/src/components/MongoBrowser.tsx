@@ -1,3 +1,4 @@
+import { MongoFileTools } from './MongoFileTools'
 import { useEffect, useRef, useState } from 'react'
 import { Database, Plus, RefreshCw, Play, Trash2, Save } from 'lucide-react'
 import type { ConnectionProfile, MongoReadResult, WorkspaceTab } from '@shared/contracts'
@@ -9,6 +10,8 @@ import { Input } from './ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog'
 import { DataGrid } from './DataGrid'
 import { ErrorPanel, useConfirm } from './common'
+import { MongoPipelineBuilder } from './MongoPipelineBuilder'
+import { MongoTools } from './MongoTools'
 
 export function MongoBrowser({
   tab,
@@ -37,6 +40,9 @@ export function MongoBrowser({
   const [edit, setEdit] = useState<{ original?: string; text: string; insert: boolean; readonly: boolean }>()
   const [editError, setEditError] = useState('')
   const [writing, setWriting] = useState(false)
+  const [toolsPending, setToolsPending] = useState(false)
+  const [toolsBusy, setToolsBusy] = useState(false)
+  const [fileBusy, setFileBusy] = useState(false)
   const request = useRef(0)
   const running = useRef(false)
   const writePending = useRef(false)
@@ -53,12 +59,13 @@ export function MongoBrowser({
   }, [])
   useEffect(() => {
     useApp.getState().setRuntime(tab.id, {
-      pendingEdits: !!edit && !edit.readonly && (edit.insert || edit.text !== edit.original),
+      pendingEdits:
+        toolsPending || (!!edit && !edit.readonly && (edit.insert || edit.text !== edit.original)),
     })
-  }, [edit, tab.id])
+  }, [edit, toolsPending, tab.id])
   useEffect(() => {
-    useApp.getState().setRuntime(tab.id, { running: busy || writing })
-  }, [busy, writing, tab.id])
+    useApp.getState().setRuntime(tab.id, { running: busy || writing || toolsBusy || fileBusy })
+  }, [busy, writing, toolsBusy, fileBusy, tab.id])
   useEffect(() => {
     let active = true
     if (status === 'connected')
@@ -102,7 +109,7 @@ export function MongoBrowser({
     ordering: typeof sort | null = sort,
     resetQuery = false,
   ) {
-    if (running.current || !database || !target || status !== 'connected') return
+    if (running.current || toolsBusy || toolsPending || !database || !target || status !== 'connected') return
     running.current = true
     setBusy(true)
     setError('')
@@ -194,7 +201,7 @@ export function MongoBrowser({
             aria-label="MongoDB database"
             list={`mongo-databases-${tab.id}`}
             value={database}
-            disabled={busy || writing}
+            disabled={busy || writing || fileBusy}
             onChange={(e) => update({ database: e.target.value || undefined, table: undefined })}
           />
         </label>
@@ -208,7 +215,7 @@ export function MongoBrowser({
           <Input
             aria-label="MongoDB collection"
             value={collection}
-            disabled={busy || writing}
+            disabled={busy || writing || fileBusy}
             onChange={(e) => {
               update({ table: e.target.value })
               setResult(undefined)
@@ -252,7 +259,7 @@ export function MongoBrowser({
               <button
                 key={name}
                 className={`object-row ${collection === name ? 'active' : ''}`}
-                disabled={busy || writing}
+                disabled={busy || writing || fileBusy}
                 onClick={() => {
                   update({ table: name, title: name, mongoMode: 'find', sql: '{}' })
                   setResult(undefined)
@@ -272,6 +279,34 @@ export function MongoBrowser({
         </aside>
         <section className="mongo-workspace">
           <div className="mongo-query-toolbar">
+            <MongoFileTools
+              key={`${profile.id}/${database}/${collection}`}
+              profile={profile}
+              database={database}
+              collection={collection}
+              query={query}
+              mode={mode}
+              disabled={busy || writing || toolsBusy || status !== 'connected'}
+              onBusy={setFileBusy}
+              onChanged={() => void load(collection, 0)}
+            />
+            <MongoTools
+              profile={profile}
+              database={database}
+              collection={collection}
+              disabled={busy || writing || toolsBusy || status !== 'connected'}
+              onPending={setToolsPending}
+              onBusy={setToolsBusy}
+            />
+            <MongoPipelineBuilder
+              source={mode === 'aggregate' ? query : '[]'}
+              disabled={busy || writing || toolsBusy}
+              onPending={setToolsPending}
+              onApply={(sql) => {
+                update({ mongoMode: 'aggregate', sql })
+                setResult(undefined)
+              }}
+            />
             <select
               aria-label="MongoDB query mode"
               value={mode}

@@ -6,16 +6,10 @@ import { join, resolve } from 'node:path'
 import { Client } from 'pg'
 import { profileSchema } from '../src/shared/contracts'
 import { inspectElectronSandbox, waitForElectronWorkspace } from './electron-runtime'
+import { typeSql } from './editor-input'
+import { shortcutLabel, shortcutPlatform } from '../src/shared/shortcuts'
 
 const root = resolve(import.meta.dirname, '..')
-async function typeSql(page: Page, sql: string) {
-  const editor = page.locator('.monaco-editor:visible textarea').first()
-  await editor.focus()
-  await editor.press('ControlOrMeta+Home')
-  await editor.press('ControlOrMeta+Shift+End')
-  await editor.pressSequentially(sql)
-  return editor
-}
 async function finishSave(page: Page, name: string) {
   const dialog = page.getByRole('dialog', { name: 'Save query', exact: true })
   await expect(dialog).toBeVisible()
@@ -118,7 +112,12 @@ test('table and ordinary SQL save, reopen without execution, survive restart, an
     const before = await page.evaluate(() => window.harbor.bootstrap())
     const tableSql = before.workspace.tabs.find((tab) => tab.kind === 'table')!.sql
     const historyIds = before.history.map((entry) => entry.id)
-    await page.getByRole('button', { name: 'Save query · Ctrl+S', exact: true }).click()
+    await page
+      .getByRole('button', {
+        name: `Save query · ${shortcutLabel('save-query', shortcutPlatform(process.platform))}`,
+        exact: true,
+      })
+      .click()
     await finishSave(page, tableName)
     await expect(
       page.getByRole('tab').filter({ has: page.getByText('records', { exact: true }) }),
@@ -187,7 +186,7 @@ test('table and ordinary SQL save, reopen without execution, survive restart, an
         )
         const run = page
           .locator('.editor-region:visible')
-          .getByRole('button', { name: /^Run(?: Ctrl Enter)?$/ })
+          .getByRole('button', { name: /^Run(?: (?:Command|Ctrl)\+Enter)?$/ })
         await expect(run).toBeEnabled()
         await expect(run).toBeVisible()
         const kbd = run.locator('kbd')
@@ -232,7 +231,7 @@ test('table and ordinary SQL save, reopen without execution, survive restart, an
               ratio: (levels[0] + 0.05) / (levels[1] + 0.05),
               fontSize: style.fontSize,
               fontWeight: style.fontWeight,
-              target: useShortcut ? 'Ctrl Enter shortcut' : 'Run label; shortcut hidden by compact layout',
+              target: useShortcut ? 'Platform run shortcut' : 'Run label; shortcut hidden by compact layout',
             }
           }, width === 1440)
           expect(

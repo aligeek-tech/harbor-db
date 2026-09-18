@@ -1,0 +1,25 @@
+name: harbor-clickhouse-fixture
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:26.3@sha256:810861a2e2d0188744f5f23b2d3ec9ff95812bcb9ddbb8fed13a377a7f305893
+    environment:
+      CLICKHOUSE_DB: harbor
+      CLICKHOUSE_USER: harbor
+      CLICKHOUSE_PASSWORD: harbor_test
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: '1'
+    ports: ['127.0.0.1:18123:8123']
+    tmpfs:
+      - /var/lib/clickhouse:size=1073741824
+      - /var/log/clickhouse-server:size=67108864
+    cpus: 2
+    mem_limit: 2g
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test:
+        ['CMD', 'clickhouse-client', '--user', 'harbor', '--password', 'harbor_test', '--query', 'SELECT 1']
+      interval: 3s
+      timeout: 3s
+      retries: 40

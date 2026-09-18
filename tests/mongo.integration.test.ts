@@ -213,6 +213,9 @@ describe.skipIf(process.env.HARBOR_INTEGRATION !== '1')('MongoDB integration', (
   })
   it('cleans up failed connections', async () => {
     await expect(service.connect({ ...profile, id: 'bad-auth' }, { password: 'incorrect' })).rejects.toThrow()
+    expect(service.status('bad-auth').state).toBe('authentication-failed')
+    await expect(service.databases('bad-auth')).rejects.toThrow('Connect to MongoDB first')
+    await service.disconnect('bad-auth')
     expect(service.status('bad-auth').state).toBe('disconnected')
   })
 })

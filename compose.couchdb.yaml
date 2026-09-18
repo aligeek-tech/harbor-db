@@ -1,0 +1,22 @@
+name: harbor-roadmap-couchdb-y6pr0dek
+services:
+  couchdb:
+    image: couchdb:3.5.1@sha256:ccea1e8035bf7afd68336e24056a1ca9c1c46d7abe42da686322c0ac7218e5c2
+    platform: linux/arm64
+    user: "5984:5984"
+    cpus: 1
+    mem_limit: 512m
+    pids_limit: 256
+    ports: ["127.0.0.1:15984:5984"]
+    environment:
+      ERL_FLAGS: "+S 2:2 +A 2"
+      COUCHDB_USER: ${COUCHDB_USER:?External disposable credentials required}
+      COUCHDB_PASSWORD: ${COUCHDB_PASSWORD:?External disposable credentials required}
+    volumes:
+      - couchdb-data:/opt/couchdb/data
+      - ${HARBOR_COUCHDB_FIXTURE_DIR:?External fixture directory required}/single.ini:/opt/couchdb/etc/local.d/single.ini:ro
+    logging:
+      driver: json-file
+      options: {max-size: "5m", max-file: "2"}
+volumes:
+  couchdb-data:

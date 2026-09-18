@@ -1,0 +1,23 @@
+name: harbor-roadmap-cassandra-y6pr0dek
+services:
+  cassandra:
+    image: cassandra:5.0.9@sha256:c89d12282b69b38a78f23c37886fc35e732f33b7c18801016c0334e4c7cabf64
+    platform: linux/arm64
+    ports: ["127.0.0.1:19042:9042"]
+    environment:
+      CASSANDRA_CLUSTER_NAME: HarborRoadmapFixture
+      CASSANDRA_DC: datacenter1
+      CASSANDRA_ENDPOINT_SNITCH: GossipingPropertyFileSnitch
+      MAX_HEAP_SIZE: 768M
+      HEAP_NEWSIZE: 128M
+      JVM_EXTRA_OPTS: "-XX:ActiveProcessorCount=2"
+    entrypoint: ["bash", "-c", "sed -i 's/^authenticator:.*/authenticator: PasswordAuthenticator/; s/^authorizer:.*/authorizer: CassandraAuthorizer/' /etc/cassandra/cassandra.yaml; exec docker-entrypoint.sh cassandra -f"]
+    mem_limit: 2g
+    cpus: 2.0
+    pids_limit: 256
+    volumes: ["cassandra-data:/var/lib/cassandra"]
+    logging:
+      driver: json-file
+      options: {max-size: "5m", max-file: "2"}
+volumes:
+  cassandra-data:

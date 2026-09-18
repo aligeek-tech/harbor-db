@@ -11,6 +11,7 @@ export interface StoredCredential {
   hasPassword: boolean
   hasSshPassword: boolean
   hasPassphrase: boolean
+  hasSentinelPassword?: boolean
 }
 export interface CredentialRepository {
   getCredential(id: string): StoredCredential | undefined
@@ -105,6 +106,7 @@ export class CredentialService {
         hasPassword: merged.password !== undefined,
         hasSshPassword: merged.sshPassword !== undefined,
         hasPassphrase: merged.passphrase !== undefined,
+        hasSentinelPassword: merged.sentinelPassword !== undefined,
       }
       this.lastFailure = undefined
       return {
@@ -133,7 +135,8 @@ export class CredentialService {
       session &&
       (!stored.hasPassword || session.password !== undefined) &&
       (!stored.hasSshPassword || session.sshPassword !== undefined) &&
-      (!stored.hasPassphrase || session.passphrase !== undefined)
+      (!stored.hasPassphrase || session.passphrase !== undefined) &&
+      (!stored.hasSentinelPassword || session.sentinelPassword !== undefined)
     if (hasAllSavedFields) return { ...session }
     const status = this.protectionStatus()
     if (!status.available) throw new Error(status.reason)

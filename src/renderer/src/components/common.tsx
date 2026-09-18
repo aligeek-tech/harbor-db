@@ -1,15 +1,21 @@
 import { createContext, useContext, useRef, useState, type ReactNode } from 'react'
-import { AlertCircle, Check, Copy, Database, Layers, LoaderCircle, X } from 'lucide-react'
+import { AlertCircle, Check, Copy, LoaderCircle, X } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Engine } from '@shared/contracts'
+import { api } from '../lib/api'
+import { engineLogos } from '../lib/engine-logos'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 export function EngineIcon({ engine }: { engine: Engine }) {
-  return engine === 'redis' ? (
-    <Layers className="engine-icon redis" />
-  ) : (
-    <Database className={`engine-icon ${engine}`} />
+  return (
+    <img
+      className={`engine-icon ${engine}`}
+      src={engineLogos[engine]}
+      alt=""
+      aria-hidden="true"
+      draggable={false}
+    />
   )
 }
 export function IconButton({
@@ -60,8 +66,8 @@ export function CopyButton({ value, label = 'Copy' }: { value: string; label?: s
     <IconButton
       label={label}
       onClick={() =>
-        void navigator.clipboard
-          .writeText(value)
+        void api
+          .copyText(value)
           .then(() => {
             setCopied(true)
             setTimeout(() => setCopied(false), 1300)

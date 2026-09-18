@@ -1,0 +1,19 @@
+# SAP HANA DB-31 — implemented candidate; real target verification pending
+
+2026-09-18. Selected SAP-maintained `hdb` **2.29.6**, Apache-2.0, Node18+, pure JavaScript. Pinned install used `--ignore-scripts`; three packages added. The proprietary `@sap/hana-client`2.30.24 tarball/license was inspected outside the repository but was not installed or used. Its distribution/use restrictions make it unsuitable for silently bundling into this application without a separate agreement. `hdb` is an official supported alternative for HANA Cloud/Platform; no claim is made that it has all proprietary-client capabilities.
+
+## Workflow
+
+Direct tenant SQL endpoint, required database name and username/password; no ambient authentication, session recovery, topology routing or automatic target redirection. Each tab verifies native `SYS.M_DATABASE` identity before user SQL. Remote endpoints require verified TLS or SSH; combined TLS retains original-host certificate verification. Inherited HDB wire tracing is rejected before driver loading. Provider error details are omitted.
+
+Native table/view catalogs, schema filtering, column metadata, bounded table results, SQL and readonly streaming export use the real driver. Single reviewed write statements use native autocommit; reads use native READ_ONLY transactions followed by rollback. No interactive transaction, parameter binding, grid-edit, procedure-multiple-result, inferred schema DDL or cross-tenant browsing capability is advertised. Cancellation/deadline closes only that tab socket and reports that server completion is unconfirmed. A submitted write with a lost response is uncertain and is never replayed.
+
+Eight tab connections per profile, 5,000 metadata rows, 2,000 columns, 8MiB loaded result/cell bounds. Cursor fetchSize1 and awaited export sinks supply backpressure. Bounds apply after driver decode, not to all possible individual wire allocations. Exact fixed numbers and temporal strings retain native driver representations; unsafe number coercion fails closed. Null/empty, duplicate labels, binary and spatial/REAL_VECTOR native bytes retain type metadata. LOB bytes are bounded and UTF8-decoded only for text types.
+
+## Evidence and missing prerequisite
+
+`implementation-hana-merged-contracts`:31/31 across5files, exit0. Eleven HANA checks cover local driver contracts, tenant mismatch, native-readonly command sequence, confirmation, uncertain writes/no replay, matching cancellation, timeout, independent tabs, backpressure, transport policy, exact representations, actual published-driver loading without a socket and actual driver decoders over synthetic binary values. These are **not a real HANA server test**. The first decoder probe used a proleptic-Gregorian epoch instead of HANA's Julian/Gregorian calendar and omitted the driver's trailing fractional zeroes; corrected the synthetic fixture, not production conversion.
+
+Real acceptance requires an authorized disposable SAP HANA Platform2 or HANA Cloud tenant SQL endpoint, exact database name, CA trust, scoped read/write and restricted principals, synthetic catalog/data and permitted query budget. No target/credentials are available; no HANA Cloud account/server was provisioned or activated. Actual server authentication/TLS/types/privileges/cancellation and desktop/packaged end-to-end acceptance remain incomplete. A local Express server is not available on this ARM host and may require licensed x86 infrastructure; that is not replaced with a fake server claim.
+
+References: [SAP node-hdb support/features](https://github.com/SAP/node-hdb), [SET TRANSACTION](https://help.sap.com/docs/hana-cloud-database/sap-hana-cloud-sap-hana-database-sql-reference-guide/set-transaction-statement-transaction-management), [TABLE_COLUMNS](https://help.sap.com/docs/SAP_HANA_PLATFORM/4fe29514fd584807ac9f2a04f6754767/2100d33a75191014868bbcd89274199c.html).

@@ -1,3 +1,11 @@
+import type { ReportDefinition } from '@shared/reports'
+import {
+  restoredDrafts,
+  switchWorkspaceDrafts,
+  workspaceSchema,
+  workspaceSnapshotSchema,
+  type WorkspaceSnapshot,
+} from '@shared/workspaces'
 import { create } from 'zustand'
 import { toast } from 'sonner'
 import type {
@@ -16,6 +24,7 @@ import { api } from './lib/api'
 import { demoObjects, demoProfiles, demoResult, demoSql, previewBootstrap } from './lib/demo'
 import { uid } from './lib/utils'
 interface Runtime {
+  restored?: boolean
   tableQueryMode?: boolean
   pendingEdits?: boolean
   result?: QueryResult
@@ -25,10 +34,13 @@ interface Runtime {
   transaction: 'idle' | 'open' | 'failed'
 }
 interface AppState {
+  draftSaveState: 'saved' | 'pending' | 'saving' | 'error'
+  switchingWorkspace: boolean
   loaded: boolean
   version: string
   profiles: ConnectionProfile[]
   workspace: Workspace
+  reports: ReportDefinition[]
   savedQueries: SavedQuery[]
   history: HistoryEntry[]
   secureStorage: Bootstrap['secureStorage']
@@ -50,6 +62,11 @@ interface AppState {
   updateTab(id: string, updates: Partial<WorkspaceTab>): void
   activate(id: string): void
   removeTab(id: string): void
+  reopenTab(id: string): void
+  switchWorkspace(target: WorkspaceSnapshot, discardReviewed: boolean): Promise<void>
+  endPrivateSession(): Promise<void>
+  renameWorkspace(name: string): Promise<void>
+  deleteWorkspace(id: string): Promise<void>
   reorderTab(id: string, before: string): void
   setRuntime(id: string, updates: Partial<Runtime>): void
   setSettings(updates: Partial<Settings>): void
@@ -60,7 +77,29 @@ interface AppState {
 }
 let timer: ReturnType<typeof setTimeout> | undefined
 let persistenceWarning = false
+let saveChain: Promise<void> = Promise.resolve()
+function persist(workspace: Workspace) {
+  const safe = workspaceSchema.parse({
+    ...workspace,
+    tabs: workspace.tabs.filter((tab) => !tab.connectionId.startsWith('demo-')),
+    recentlyClosed: workspace.recentlyClosed.filter((tab) => !tab.connectionId.startsWith('demo-')),
+    expanded: workspace.expanded.filter((id) => !id.startsWith('demo-')),
+    activeTabId: workspace.activeTabId?.startsWith('demo-') ? null : workspace.activeTabId,
+  })
+  saveChain = saveChain.catch(() => {}).then(() => api.saveWorkspace(safe))
+  return saveChain
+}
+const restoredRuntime = (tabs: WorkspaceTab[]) =>
+  Object.fromEntries(
+    tabs.map((tab) => [tab.id, { transaction: 'idle' as const, restored: tab.kind !== 'query' }]),
+  )
+const pinnedFirst = (tabs: WorkspaceTab[]) => [
+  ...tabs.filter((tab) => tab.pinned),
+  ...tabs.filter((tab) => !tab.pinned),
+]
+
 function queueSave() {
+  useApp.setState({ draftSaveState: 'pending' })
   clearTimeout(timer)
   timer = setTimeout(() => {
     void useApp
@@ -80,10 +119,13 @@ function queueSave() {
   }, 400)
 }
 export const useApp = create<AppState>((set, get) => ({
+  draftSaveState: 'saved',
+  switchingWorkspace: false,
   loaded: false,
   version: '',
   profiles: [],
   workspace: previewBootstrap.workspace,
+  reports: [],
   savedQueries: [],
   history: [],
   secureStorage: previewBootstrap.secureStorage,
@@ -100,6 +142,8 @@ export const useApp = create<AppState>((set, get) => ({
       version: b.version,
       profiles: b.profiles,
       workspace: b.workspace,
+      runtime: restoredRuntime(b.workspace.tabs),
+      reports: b.reports,
       savedQueries: b.savedQueries,
       history: b.history,
       secureStorage: b.secureStorage,
@@ -120,13 +164,33 @@ export const useApp = create<AppState>((set, get) => ({
     const b = await api.bootstrap()
     set({
       profiles: get().demo ? [...b.profiles, ...demoProfiles] : b.profiles,
+      reports: b.reports,
       savedQueries: b.savedQueries,
       history: b.history,
       secureStorage: b.secureStorage,
     })
   },
   setProfiles: (profiles) => set({ profiles }),
-  setStatus: (id, status) => set((s) => ({ statuses: { ...s.statuses, [id]: status } })),
+  setStatus: (id, status) =>
+    set((s) => {
+      const previous = s.statuses[id]
+      const now = new Date().toISOString()
+      return {
+        statuses: {
+          ...s.statuses,
+          [id]: {
+            ...status,
+            checkedAt: status.checkedAt || now,
+            changedAt: status.changedAt || (previous?.state === status.state ? previous.changedAt : now),
+            lastConnectedAt:
+              status.lastConnectedAt ||
+              (status.state === 'connected' && previous?.state !== 'connected'
+                ? now
+                : previous?.lastConnectedAt),
+          },
+        },
+      }
+    }),
   setObjects: (id, objects) => set((s) => ({ objects: { ...s.objects, [id]: objects } })),
   clearObjects: (id) =>
     set((s) => {
@@ -140,7 +204,7 @@ export const useApp = create<AppState>((set, get) => ({
     const id = input.id || uid()
     const tab: WorkspaceTab = { id, sql: '', ...input }
     set((s) => ({
-      workspace: { ...s.workspace, tabs: [...s.workspace.tabs, tab], activeTabId: id },
+      workspace: { ...s.workspace, tabs: pinnedFirst([...s.workspace.tabs, tab]), activeTabId: id },
       runtime: { ...s.runtime, [id]: { transaction: 'idle' } },
     }))
     queueSave()
@@ -150,7 +214,7 @@ export const useApp = create<AppState>((set, get) => ({
     set((s) => ({
       workspace: {
         ...s.workspace,
-        tabs: s.workspace.tabs.map((t) => (t.id === id ? { ...t, ...updates } : t)),
+        tabs: pinnedFirst(s.workspace.tabs.map((t) => (t.id === id ? { ...t, ...updates } : t))),
       },
     }))
     queueSave()
@@ -161,6 +225,7 @@ export const useApp = create<AppState>((set, get) => ({
   },
   removeTab: (id) => {
     set((s) => {
+      const closed = s.workspace.tabs.find((t) => t.id === id)
       const tabs = s.workspace.tabs.filter((t) => t.id !== id)
       const runtime = { ...s.runtime }
       delete runtime[id]
@@ -168,6 +233,10 @@ export const useApp = create<AppState>((set, get) => ({
         workspace: {
           ...s.workspace,
           tabs,
+          recentlyClosed:
+            closed && !closed.connectionId.startsWith('demo-')
+              ? [closed, ...s.workspace.recentlyClosed.filter((tab) => tab.id !== id)].slice(0, 10)
+              : s.workspace.recentlyClosed,
           activeTabId: s.workspace.activeTabId === id ? tabs.at(-1)?.id || null : s.workspace.activeTabId,
         },
         runtime,
@@ -175,12 +244,116 @@ export const useApp = create<AppState>((set, get) => ({
     })
     queueSave()
   },
+  reopenTab: (closedId) => {
+    const snapshot = get().workspace.recentlyClosed.find((tab) => tab.id === closedId)
+    if (!snapshot || get().workspace.tabs.length >= 100) return
+    const tab = { ...snapshot, id: uid() }
+    set((state) => ({
+      workspace: {
+        ...state.workspace,
+        tabs: pinnedFirst([...state.workspace.tabs, tab]),
+        activeTabId: tab.id,
+        recentlyClosed: state.workspace.recentlyClosed.filter((item) => item.id !== closedId),
+      },
+      runtime: { ...state.runtime, ...restoredRuntime([tab]) },
+      section: 'connections',
+    }))
+    queueSave()
+  },
+  switchWorkspace: async (target, discardReviewed) => {
+    if (get().switchingWorkspace) throw new Error('A workspace change is already in progress.')
+    const state = get()
+    if (state.demo) throw new Error('Exit the example workspace before switching saved workspaces.')
+    if (Object.values(state.runtime).some((runtime) => runtime.running))
+      throw new Error('Cancel running operations before switching workspaces.')
+    if (
+      !discardReviewed &&
+      Object.values(state.runtime).some((runtime) => runtime.pendingEdits || runtime.transaction !== 'idle')
+    )
+      throw new Error('Review staged changes and open transactions before switching workspaces.')
+    // Validate limits before closing any physical sessions. The old workspace stays visible on failure.
+    const next = switchWorkspaceDrafts(state.workspace, workspaceSnapshotSchema.parse(target), uid)
+    if (next === state.workspace) return
+    clearTimeout(timer)
+    set({ switchingWorkspace: true })
+    try {
+      await saveChain.catch(() => {})
+      for (const tab of state.workspace.tabs) {
+        if (!tab.connectionId.startsWith('demo-')) {
+          await api.closeSession({ connectionId: tab.connectionId, sessionId: tab.id })
+          get().setRuntime(tab.id, { transaction: 'idle' })
+        }
+      }
+      await persist(next)
+      set({
+        workspace: next,
+        runtime: restoredRuntime(next.tabs),
+        section: 'connections',
+        draftSaveState: 'saved',
+      })
+    } finally {
+      set({ switchingWorkspace: false })
+    }
+  },
+  endPrivateSession: async () => {
+    const state = get()
+    if (state.switchingWorkspace) throw new Error('A workspace change is already in progress.')
+    if (Object.values(state.runtime).some((runtime) => runtime.running))
+      throw new Error('Cancel running operations before ending the private session.')
+    clearTimeout(timer)
+    set({ switchingWorkspace: true })
+    try {
+      await saveChain.catch(() => {})
+      const previous = (await api.bootstrap()).workspace
+      const next = workspaceSchema.parse({
+        ...previous,
+        ...restoredDrafts(previous, uid),
+        settings: { ...state.workspace.settings, privateSession: false },
+      })
+      for (const tab of state.workspace.tabs) {
+        if (!tab.connectionId.startsWith('demo-')) {
+          await api.closeSession({ connectionId: tab.connectionId, sessionId: tab.id })
+          get().setRuntime(tab.id, { transaction: 'idle' })
+        }
+      }
+      await persist(next)
+      set({
+        workspace: next,
+        runtime: restoredRuntime(next.tabs),
+        draftSaveState: 'saved',
+        section: 'connections',
+      })
+    } finally {
+      set({ switchingWorkspace: false })
+    }
+  },
+  renameWorkspace: async (name) => {
+    const state = get()
+    if (state.workspace.settings.privateSession)
+      throw new Error('End the private session before renaming a workspace.')
+    const next = workspaceSchema.parse({ ...state.workspace, name })
+    clearTimeout(timer)
+    await persist(next)
+    set({ workspace: next })
+  },
+  deleteWorkspace: async (id) => {
+    const state = get()
+    if (state.workspace.settings.privateSession)
+      throw new Error('End the private session before deleting a workspace.')
+    const next = {
+      ...state.workspace,
+      archivedWorkspaces: state.workspace.archivedWorkspaces.filter((snapshot) => snapshot.id !== id),
+    }
+    clearTimeout(timer)
+    await persist(next)
+    set({ workspace: next })
+  },
   reorderTab: (id, before) => {
     set((s) => {
       const tabs = [...s.workspace.tabs]
       const from = tabs.findIndex((t) => t.id === id)
       const to = tabs.findIndex((t) => t.id === before)
-      if (from < 0 || to < 0) return {}
+      if (from < 0 || to < 0 || !!tabs[from].pinned !== !!tabs[to].pinned) return {}
       const [tab] = tabs.splice(from, 1)
       tabs.splice(to, 0, tab)
       return { workspace: { ...s.workspace, tabs } }
@@ -262,14 +435,18 @@ export const useApp = create<AppState>((set, get) => ({
   },
   flush: async () => {
     clearTimeout(timer)
-    const w = get().workspace
-    await api.saveWorkspace({
-      ...w,
-      tabs: w.tabs
-        .filter((t) => !t.connectionId.startsWith('demo-'))
-        .map((t) => (w.settings.privateSession ? { ...t, sql: '' } : t)),
-      expanded: w.expanded.filter((x) => !x.startsWith('demo-')),
-      activeTabId: w.activeTabId?.startsWith('demo-') ? null : w.activeTabId,
-    })
+    if (get().switchingWorkspace) {
+      await saveChain
+      return
+    }
+    const workspace = get().workspace
+    set({ draftSaveState: 'saving' })
+    try {
+      await persist(workspace)
+      if (get().workspace === workspace) set({ draftSaveState: 'saved' })
+    } catch (error) {
+      set({ draftSaveState: 'error' })
+      throw error
+    }
   },
 }))

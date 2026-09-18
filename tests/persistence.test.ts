@@ -249,6 +249,113 @@ describe('SQLite metadata and restoration', () => {
   })
 })
 
+describe('named workspace migration and privacy', () => {
+  it('migrates v3 credentials and preserves separate Sentinel secrets across session overrides', () => {
+    const path = directory(), first = openStore(path)
+    first.saveProfile(profile({ engine: 'redis' }))
+    const fake = protectedProvider()
+    const before = new CredentialService(fake.provider, first, 'linux')
+    const prepared = before.prepare('alpha', { password: 'data-private', sentinelPassword: 'sentinel-private' }, true)
+    first.writeCredential('alpha', prepared.credential!)
+    expect(first.profile('alpha').hasSentinelPassword).toBe(true)
+    expect(new CredentialService(fake.provider, first, 'linux').resolve('alpha', { password: 'new-data-session' })).toEqual({ password: 'new-data-session', sentinelPassword: 'sentinel-private' })
+    expect(JSON.stringify(first.exportProfiles())).not.toContain('sentinel-private')
+    close(first)
+    const old = new DatabaseSync(join(path, 'harbor.sqlite3'))
+    old.exec('ALTER TABLE credentials DROP COLUMN has_sentinel_password; PRAGMA user_version=3')
+    old.close()
+    const migrated = openStore(path)
+    expect(Buffer.from(migrated.getCredential('alpha')!.ciphertext)).toEqual(Buffer.from(prepared.credential!.ciphertext))
+    expect(migrated.profile('alpha').hasSentinelPassword).toBe(false)
+    expect(new CredentialService(fake.provider, migrated, 'linux').resolve('alpha')).toEqual({ password: 'data-private', sentinelPassword: 'sentinel-private' })
+    expect(readdirSync(path).some((name) => name.includes(`before-v${SCHEMA_VERSION}`))).toBe(true)
+  })
+  it('migrates v2 metadata losslessly with an exact recoverable backup', () => {
+    const path = directory()
+    const store = openStore(path)
+    const before = {
+      tabs: [
+        {
+          id: 'original',
+          connectionId: 'alpha',
+          kind: 'query',
+          title: 'Existing draft',
+          sql: 'select :token',
+          cursor: 7,
+          parameterDefinitions: [{ name: 'token', type: 'text', secret: true }],
+        },
+      ],
+      activeTabId: 'original',
+      expanded: ['alpha'],
+      settings: { theme: 'dark' },
+    }
+    close(store)
+    const legacy = new DatabaseSync(join(path, 'harbor.sqlite3'))
+    legacy
+      .prepare('INSERT INTO workspace VALUES(1,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data')
+      .run(JSON.stringify(before))
+    legacy.exec('PRAGMA user_version=2')
+    legacy.close()
+    const migrated = openStore(path)
+    expect(migrated.workspace().tabs).toEqual(before.tabs)
+    expect(migrated.workspace()).toMatchObject({
+      id: 'default',
+      name: 'Default workspace',
+      archivedWorkspaces: [],
+      recentlyClosed: [],
+      settings: { theme: 'dark', editorLayout: 'stacked' },
+    })
+    const backupName = readdirSync(path).find((name) => name.includes(`before-v${SCHEMA_VERSION}`))!
+    const backup = new DatabaseSync(join(path, backupName))
+    try {
+      expect(JSON.parse(String(backup.prepare('SELECT data FROM workspace').get()!.data))).toEqual(before)
+      expect(backup.prepare('PRAGMA user_version').get()!.user_version).toBe(2)
+    } finally {
+      backup.close()
+    }
+  })
+  it('keeps ordinary archives and closed drafts unchanged in private mode and clears all draft locations explicitly', () => {
+    const store = openStore()
+    const workspace = defaultWorkspace()
+    workspace.tabs = [
+      { id: 'a', connectionId: 'alpha', kind: 'query', title: 'Ordinary', sql: 'select ordinary' },
+    ]
+    workspace.recentlyClosed = [{ ...workspace.tabs[0], id: 'closed' }]
+    workspace.archivedWorkspaces = [
+      {
+        id: 'archive',
+        name: 'Archive',
+        updatedAt: '2026-09-18',
+        tabs: [...workspace.tabs],
+        activeTabId: 'a',
+        expanded: [],
+        recentlyClosed: [...workspace.recentlyClosed],
+      },
+    ]
+    store.saveWorkspace(workspace)
+    const privateWorkspace = structuredClone(workspace)
+    privateWorkspace.id = 'private'
+    privateWorkspace.name = 'private name'
+    privateWorkspace.tabs[0].sql = 'private text'
+    privateWorkspace.recentlyClosed[0].sql = 'private closed text'
+    privateWorkspace.archivedWorkspaces[0].tabs[0].sql = 'private archived text'
+    privateWorkspace.settings.privateSession = true
+    store.saveWorkspace(privateWorkspace)
+    expect(store.workspace()).toEqual({ ...workspace, settings: privateWorkspace.settings })
+    store.clearDrafts()
+    const cleared = store.workspace()
+    expect(
+      [
+        cleared.tabs[0],
+        cleared.recentlyClosed[0],
+        cleared.archivedWorkspaces[0].tabs[0],
+        cleared.archivedWorkspaces[0].recentlyClosed[0],
+      ].map((tab) => tab.sql),
+    ).toEqual(['', '', '', ''])
+    expect(cleared.settings.privateSession).toBe(true)
+  })
+})
+
 describe('credential storage security', () => {
   it.each(['basic_text', 'unknown', 'plaintext', ''])(
     'refuses Linux backend %j and allows session-only credentials',

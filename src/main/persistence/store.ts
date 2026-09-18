@@ -1,3 +1,11 @@
+import { reportDefinitionSchema, type ReportDefinition } from '../../shared/reports'
+import {
+  automationDefinitionSchema,
+  automationRunSchema,
+  type AutomationDefinition,
+  type AutomationRun,
+} from '../../shared/automation'
+import { clearWorkspaceDrafts } from '../../shared/workspaces'
 import { DatabaseSync } from 'node:sqlite'
 import { chmodSync, existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
@@ -16,13 +24,14 @@ import {
 import type { CredentialRepository, StoredCredential } from './credentials'
 import { redactHistory } from './credentials'
 
-export const SCHEMA_VERSION = 2
-export const defaultWorkspace = (): Workspace => ({
-  tabs: [],
-  activeTabId: null,
-  expanded: [],
-  settings: settingsSchema.parse({}),
-})
+export const SCHEMA_VERSION = 6
+export const defaultWorkspace = (): Workspace =>
+  workspaceSchema.parse({
+    tabs: [],
+    activeTabId: null,
+    expanded: [],
+    settings: settingsSchema.parse({}),
+  })
 export class PersistenceRecoveryError extends Error {
   constructor(
     public databasePath: string,
@@ -74,6 +83,22 @@ export class MetadataStore implements CredentialRepository {
           db!.exec(
             'CREATE INDEX IF NOT EXISTS history_executed ON history(executed_at); CREATE INDEX IF NOT EXISTS history_connection ON history(connection_id);',
           )
+        if (version < 3) {
+          // Named-workspace defaults are added transactionally after the recoverable v2 backup.
+          // Mark v3 so older applications refuse these newer draft fields instead of misreading them.
+          const row = db!.prepare('SELECT data FROM workspace WHERE id=1').get()
+          if (row)
+            db!
+              .prepare('UPDATE workspace SET data=? WHERE id=1')
+              .run(JSON.stringify(workspaceSchema.parse(JSON.parse(String(row.data)))))
+        }
+        if (version < 4 && !db!.prepare('PRAGMA table_info(credentials)').all().some((column) => column.name === 'has_sentinel_password'))
+          db!.exec('ALTER TABLE credentials ADD COLUMN has_sentinel_password INTEGER NOT NULL DEFAULT 0')
+        if (version < 5) db!.exec('CREATE TABLE IF NOT EXISTS reports (id TEXT PRIMARY KEY,data TEXT NOT NULL)')
+        if (version < 6)
+          db!.exec(
+            'CREATE TABLE IF NOT EXISTS automations (id TEXT PRIMARY KEY,data TEXT NOT NULL); CREATE TABLE IF NOT EXISTS automation_runs (id TEXT PRIMARY KEY,task_id TEXT NOT NULL REFERENCES automations(id) ON DELETE CASCADE,started_at TEXT NOT NULL,data TEXT NOT NULL); CREATE INDEX IF NOT EXISTS automation_runs_task_started ON automation_runs(task_id,started_at DESC);',
+          )
         db!.exec(`PRAGMA user_version=${SCHEMA_VERSION}`)
       })
       db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;')
@@ -122,14 +147,20 @@ export class MetadataStore implements CredentialRepository {
       hasPassword: credential?.hasPassword ?? false,
       hasSshPassword: credential?.hasSshPassword ?? false,
       hasPassphrase: credential?.hasPassphrase ?? false,
+      hasSentinelPassword: credential?.hasSentinelPassword ?? false,
     }
   }
   saveProfile(profile: ConnectionProfile): void {
     const clean = profileSchema.parse({
       ...profile,
+      ...((profile.engine === 'sqlite' && profile.sqlite.mode === 'create') ||
+      (profile.engine === 'duckdb' && ['create', 'memory'].includes(profile.duckdb.mode))
+        ? { autoReconnect: false }
+        : {}),
       hasPassword: false,
       hasSshPassword: false,
       hasPassphrase: false,
+      hasSentinelPassword: false,
     })
     this.db
       .prepare(
@@ -153,6 +184,7 @@ export class MetadataStore implements CredentialRepository {
           delete query.connectionId
           this.saveQuery(query)
         }
+      for (const report of this.reports()) if (report.connectionId === id) { delete report.connectionId; this.saveReport(report) }
       this.db.prepare('DELETE FROM profiles WHERE id=?').run(id)
     })
   }
@@ -164,12 +196,13 @@ export class MetadataStore implements CredentialRepository {
       hasPassword: !!row.has_password,
       hasSshPassword: !!row.has_ssh_password,
       hasPassphrase: !!row.has_passphrase,
+      hasSentinelPassword: !!row.has_sentinel_password,
     }
   }
   writeCredential(id: string, value: StoredCredential): void {
     this.db
       .prepare(
-        'INSERT INTO credentials VALUES(?,?,?,?,?) ON CONFLICT(connection_id) DO UPDATE SET ciphertext=excluded.ciphertext,has_password=excluded.has_password,has_ssh_password=excluded.has_ssh_password,has_passphrase=excluded.has_passphrase',
+        'INSERT INTO credentials VALUES(?,?,?,?,?,?) ON CONFLICT(connection_id) DO UPDATE SET ciphertext=excluded.ciphertext,has_password=excluded.has_password,has_ssh_password=excluded.has_ssh_password,has_passphrase=excluded.has_passphrase,has_sentinel_password=excluded.has_sentinel_password',
       )
       .run(
         id,
@@ -177,6 +210,7 @@ export class MetadataStore implements CredentialRepository {
         Number(value.hasPassword),
         Number(value.hasSshPassword),
         Number(value.hasPassphrase),
+        Number(value.hasSentinelPassword ?? false),
       )
   }
   deleteCredential(id: string): void {
@@ -194,14 +228,17 @@ export class MetadataStore implements CredentialRepository {
       workspace.tabs = previous.tabs
       workspace.activeTabId = previous.activeTabId
       workspace.expanded = previous.expanded
+      workspace.id = previous.id
+      workspace.name = previous.name
+      workspace.archivedWorkspaces = previous.archivedWorkspaces
+      workspace.recentlyClosed = previous.recentlyClosed
     }
     this.db
       .prepare('INSERT INTO workspace VALUES(1,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data')
       .run(JSON.stringify(workspace))
   }
   clearDrafts(): void {
-    const workspace = this.workspace()
-    workspace.tabs = workspace.tabs.map((tab) => ({ ...tab, sql: '', cursor: 0, scrollTop: 0 }))
+    const workspace = clearWorkspaceDrafts(this.workspace())
     this.db
       .prepare('INSERT INTO workspace VALUES(1,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data')
       .run(JSON.stringify(workspace))
@@ -211,6 +248,59 @@ export class MetadataStore implements CredentialRepository {
       .prepare('SELECT data FROM saved_queries ORDER BY rowid DESC')
       .all()
       .map((row) => savedQuerySchema.parse(JSON.parse(String(row.data))))
+  }
+  reports(): ReportDefinition[] {
+    return this.db.prepare('SELECT data FROM reports ORDER BY id').all().map((row) => reportDefinitionSchema.parse(JSON.parse(String(row.data))))
+  }
+  saveReport(input: ReportDefinition): ReportDefinition {
+    const clean = reportDefinitionSchema.parse(input)
+    if (clean.connectionId && this.profile(clean.connectionId).engine !== 'duckdb') throw new Error('Reports require a compatible DuckDB profile.')
+    const existing = this.db.prepare('SELECT data FROM reports WHERE id=?').get(clean.id)
+    if (!existing && Number(this.db.prepare('SELECT count(*) AS n FROM reports').get()!.n) >= 500) throw new Error('The local report library is limited to 500 definitions.')
+    const now = new Date().toISOString()
+    clean.createdAt = existing ? reportDefinitionSchema.parse(JSON.parse(String(existing.data))).createdAt : now
+    clean.updatedAt = now
+    this.db.prepare('INSERT INTO reports(id,data) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data').run(clean.id, JSON.stringify(clean))
+    return clean
+  }
+  deleteReport(id: string): void { this.db.prepare('DELETE FROM reports WHERE id=?').run(id) }
+  automations(): AutomationDefinition[] {
+    return this.db
+      .prepare('SELECT data FROM automations ORDER BY id')
+      .all()
+      .map((row) => automationDefinitionSchema.parse(JSON.parse(String(row.data))))
+  }
+  saveAutomation(input: AutomationDefinition): AutomationDefinition {
+    const value = automationDefinitionSchema.parse(input)
+    const existing = this.db.prepare('SELECT 1 FROM automations WHERE id=?').get(value.id)
+    if (!existing && Number(this.db.prepare('SELECT count(*) AS n FROM automations').get()!.n) >= 100)
+      throw new Error('The reusable task library is limited to 100 definitions.')
+    this.db
+      .prepare('INSERT INTO automations(id,data) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data')
+      .run(value.id, JSON.stringify(value))
+    return value
+  }
+  deleteAutomation(id: string): void {
+    this.db.prepare('DELETE FROM automations WHERE id=?').run(id)
+  }
+  automationRuns(taskId?: string): AutomationRun[] {
+    const rows = taskId
+      ? this.db
+          .prepare('SELECT data FROM automation_runs WHERE task_id=? ORDER BY started_at DESC LIMIT 200')
+          .all(taskId)
+      : this.db.prepare('SELECT data FROM automation_runs ORDER BY started_at DESC LIMIT 500').all()
+    return rows.map((row) => automationRunSchema.parse(JSON.parse(String(row.data))))
+  }
+  saveAutomationRun(input: AutomationRun): void {
+    const value = automationRunSchema.parse(input)
+    this.db
+      .prepare(
+        'INSERT INTO automation_runs(id,task_id,started_at,data) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data',
+      )
+      .run(value.id, value.taskId, value.startedAt, JSON.stringify(value))
+    this.db.exec(
+      'DELETE FROM automation_runs WHERE id NOT IN (SELECT id FROM automation_runs ORDER BY started_at DESC LIMIT 5000)',
+    )
   }
   saveQuery(input: SavedQuery): void {
     const value = savedQuerySchema.parse(input)
@@ -266,6 +356,7 @@ export class MetadataStore implements CredentialRepository {
           hasPassword: false,
           hasSshPassword: false,
           hasPassphrase: false,
+          hasSentinelPassword: false,
         })),
       },
       null,
@@ -289,6 +380,7 @@ export class MetadataStore implements CredentialRepository {
         hasPassword: false,
         hasSshPassword: false,
         hasPassphrase: false,
+        hasSentinelPassword: false,
       }
     })
   }

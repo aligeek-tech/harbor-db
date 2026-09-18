@@ -1,4 +1,22 @@
-export type SqlDialect = 'postgres' | 'mariadb'
+import { db2Visible, db2Safety } from './db2'
+import { oracleVisible, oracleProgram, oracleSafety, oracleConfirmation, oracleQuote } from './oracle'
+import { mssqlVisible, mssqlSafety, mssqlConfirmation, mssqlQuote } from './mssql'
+export type SqlDialect = 'postgres' | 'mariadb' | 'mysql' | 'sqlite' | 'duckdb' | 'mssql' | 'clickhouse' | 'oracle' | 'trino' | 'bigquery' | 'snowflake' | 'databricks' | 'athena' | 'firebird' | 'hana' | 'db2'
+export function sqlDialect(engine: string): SqlDialect {
+  if(engine==='db2')return 'db2'
+  if (['cockroachdb', 'yugabytedb', 'redshift'].includes(engine)) return 'postgres'
+  if (['tidb', 'vitess'].includes(engine)) return 'mysql'
+  if (
+    engine === 'postgres' ||
+    engine === 'mariadb' ||
+    engine === 'mysql' ||
+    engine === 'sqlite' ||
+    engine === 'duckdb' ||
+    engine === 'mssql' || engine === 'clickhouse' || engine === 'oracle' || engine === 'trino' || engine === 'bigquery' || engine === 'snowflake' || engine === 'databricks' || engine === 'athena' || engine === 'firebird' || engine === 'hana'
+  )
+    return engine
+  throw new Error('This engine does not use the SQL editor.')
+}
 export interface SqlStatement {
   text: string
   start: number
@@ -7,12 +25,26 @@ export interface SqlStatement {
 
 /** Lexical SQL scanner. Offsets are UTF-16 offsets, matching Monaco's model. */
 function scan(sql: string, dialect: SqlDialect): { separators: number[]; visible: string } {
+  if (dialect === 'db2') { const visible = db2Visible(sql); return { visible, separators: [...visible.matchAll(/;/g)].map((match) => match.index!) } }
+  if (dialect === 'oracle') {
+    const visible=oracleVisible(sql)
+    return {visible,separators:[...visible.matchAll(/;/g)].map(match=>match.index!)}
+  }
+  if (dialect === 'mssql') {
+    mssqlSafety(sql)
+    const visible = mssqlVisible(sql)
+    return { visible, separators: [...visible.matchAll(/;/g)].map((match) => match.index!) }
+  }
+  if (dialect === 'mysql' || dialect === 'clickhouse') dialect = 'mariadb'
+  if (dialect === 'bigquery' || dialect === 'databricks') dialect = 'mariadb'
+  if (dialect === 'snowflake') dialect = 'postgres'
+  if (dialect === 'duckdb') dialect = 'postgres'
   let visible = ''
   const separators: number[] = []
   for (let i = 0; i < sql.length;) {
     const start = i
     if (
-      (sql.startsWith('--', i) && (dialect === 'postgres' || /\s/.test(sql[i + 2] ?? ' '))) ||
+      (sql.startsWith('--', i) && (dialect !== 'mariadb' || /\s/.test(sql[i + 2] ?? ' '))) ||
       (dialect === 'mariadb' && sql[i] === '#')
     ) {
       while (i < sql.length && sql[i] !== '\n') i++
@@ -29,10 +61,17 @@ function scan(sql: string, dialect: SqlDialect): { separators: number[]; visible
         } else i++
       }
       if (depth) throw new Error('Unterminated SQL comment. Complete it before running a statement.')
-    } else if (sql[i] === "'" || sql[i] === '"' || (dialect === 'mariadb' && sql[i] === '`')) {
-      const quote = sql[i++]
+    } else if (
+      sql[i] === "'" ||
+      sql[i] === '"' ||
+      (['mariadb', 'sqlite'].includes(dialect) && sql[i] === '`') ||
+      (dialect === 'sqlite' && sql[i] === '[')
+    ) {
+      const open = sql[i++]
+      const quote = open === '[' ? ']' : open
       const backslash =
-        dialect === 'mariadb' || (quote === "'" && /(?:^|[^\w$])[eE]$/.test(sql.slice(0, start)))
+        dialect === 'mariadb' ||
+        (dialect === 'postgres' && quote === "'" && /(?:^|[^\w$])[eE]$/.test(sql.slice(0, start)))
       let closed = false
       while (i < sql.length) {
         if (backslash && sql[i] === '\\') {
@@ -72,8 +111,13 @@ function scan(sql: string, dialect: SqlDialect): { separators: number[]; visible
 
 export function splitStatements(sql: string, dialect: SqlDialect = 'postgres'): SqlStatement[] {
   const { separators, visible } = scan(sql, dialect)
+  if(dialect==='oracle'&&oracleProgram(visible))throw new Error('Current-statement scope is ambiguous for Oracle PL/SQL. Select the complete block or use Run script.')
+  if (dialect === 'mssql' && /\b(?:BEGIN|PROCEDURE|PROC|TRIGGER|FUNCTION)\b/i.test(visible))
+    throw new Error(
+      'Current-statement scope is ambiguous for T-SQL blocks. Select the complete block or use Run script; omit client GO directives.',
+    )
   if (
-    dialect === 'mariadb' &&
+    (dialect === 'mariadb' || dialect === 'mysql') &&
     (/^\s*DELIMITER\b/im.test(visible) ||
       (/\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:DEFINER\s*=\s*\S+\s+)?(?:PROCEDURE|FUNCTION|TRIGGER|EVENT)\b/i.test(
         visible,
@@ -115,9 +159,11 @@ export function currentStatement(
 }
 
 export function quoteIdentifier(identifier: string, dialect: SqlDialect): string {
+  if (dialect === 'oracle') return oracleQuote(identifier)
+  if (dialect === 'mssql') return mssqlQuote(identifier)
   if (!identifier || identifier.includes('\0'))
     throw new Error('Invalid empty or NUL-containing SQL identifier.')
-  const quote = dialect === 'postgres' ? '"' : '`'
+  const quote = dialect === 'mariadb' || dialect === 'mysql' || dialect === 'clickhouse' || dialect === 'bigquery' || dialect === 'databricks' ? '`' : '"'
   return quote + identifier.replaceAll(quote, quote + quote) + quote
 }
 
@@ -131,6 +177,9 @@ export function sqlSafety(
   sql: string,
   dialect: SqlDialect,
 ): { readOnly: boolean; destructive: boolean; controlsTransaction: boolean; statementCount: number } {
+  if (dialect === 'db2') return db2Safety(sql)
+  if (dialect === 'oracle') return oracleSafety(sql)
+  if (dialect === 'mssql') return mssqlSafety(sql)
   const { visible, separators } = scan(sql, dialect)
   let start = 0
   const chunks = [...separators, sql.length]
@@ -140,7 +189,7 @@ export function sqlSafety(
       return text
     })
     .filter(Boolean)
-  const executableComment = dialect === 'mariadb' && /\/\*(?:!|M!)/i.test(sql)
+  const executableComment = (dialect === 'mariadb' || dialect === 'mysql') && /\/\*(?:!|M!)/i.test(sql)
   const readOnly =
     !executableComment &&
     chunks.length > 0 &&
@@ -172,6 +221,10 @@ export function requiredSqlConfirmation(
   dialect: SqlDialect,
   profile: { name: string; environment: string },
 ): string | undefined {
+  if (dialect === 'oracle') return oracleConfirmation(sql,profile)
+  if (dialect === 'mssql') return mssqlConfirmation(sql, profile)
+  if (['bigquery', 'snowflake', 'databricks', 'athena'].includes(dialect)) return profile.name
+  if (['trino', 'hana'].includes(dialect) && !sqlSafety(sql, dialect).readOnly) return profile.name
   const { visible } = scan(sql, dialect)
   const drops = [...visible.matchAll(/\bDROP\s+(?:DATABASE|SCHEMA)\b(?:\s+IF\s+EXISTS\b)?/gi)]
   if (drops.length > 1)

@@ -39,12 +39,14 @@
   --line: #d7dfe9;
   --text: #202938;
   --muted: #5c6c80;
-  --accent: #4868d8;
+  --accent: #3c5ac1;
   --hover: #e6ecf9;
   --success: #187554;
   --warning: #8d610d;
   --danger: #b52e43;
   --selection: #e0e8fc;
+  --scrollbar-thumb: #a0aab8;
+  --scrollbar-hover: #77879a;
   --radius: 6px;
   font-size: 13px;
   font-synthesis: none;
@@ -66,9 +68,52 @@
   --warning: #e8b65c;
   --danger: #f08088;
   --selection: #233451;
+  --scrollbar-thumb: #566475;
+  --scrollbar-hover: #8091a8;
 }
 * {
   box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+/* Explicit Chromium tracks stay visible even with macOS overlay scrolling. */
+@supports selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: auto;
+    scrollbar-color: auto;
+  }
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    min-height: 28px;
+    min-width: 28px;
+    border: 2px solid transparent;
+    border-radius: 999px;
+    background: var(--scrollbar-thumb);
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--scrollbar-hover);
+  }
+  ::-webkit-scrollbar-thumb:active {
+    background-color: var(--accent);
+  }
+}
+.monaco-scrollable-element > .scrollbar > .slider {
+  border-radius: 999px;
+}
+@media (forced-colors: active) {
+  :root,
+  :root.dark {
+    --scrollbar-thumb: CanvasText;
+    --scrollbar-hover: Highlight;
+  }
 }
 html,
 body,
@@ -643,10 +688,12 @@ button[data-variant='outline'] {
 .status-dot.connected {
   background: var(--success);
 }
-.status-dot.failed {
+.status-dot.failed,
+.status-dot.authentication-failed {
   background: var(--danger);
 }
 .status-dot.connecting,
+.status-dot.degraded,
 .status-dot.reconnecting {
   background: var(--warning);
   animation: pulse 1s infinite;
@@ -1897,3 +1944,35 @@ button[data-variant='default'] kbd {
     max-height: 24vh;
   }
 }
+
+/* Compact connection controls: one border and a shared icon/text alignment. */
+.sidebar-connection-view { position: relative; display: block; margin: 0 13px 15px; }
+.sidebar-connection-view select { appearance: none; width: 100%; height: 34px; padding-right: 36px; font-size: 12px; }
+.sidebar-connection-chevron { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+.database-engine-label { display: block; margin-bottom: 8px; font-weight: 500; font-size: 12px; }
+.database-engine-trigger { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; color: var(--text); background: var(--bg); text-align: left; }
+.database-engine-trigger:hover { background: var(--raised); border-color: var(--muted); }
+.database-engine-trigger[data-state='open'] { border-color: var(--accent); }
+.database-engine-icon { width: 24px; height: 24px; display: inline-flex; flex: 0 0 24px; align-items: center; justify-content: center; }
+.database-engine-icon svg { width: 18px; height: 18px; flex-shrink: 0; }
+.database-engine-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.database-engine-chevron, .database-engine-check { width: 16px; height: 16px; flex: 0 0 16px; color: var(--muted); }
+.database-engine-check { color: var(--accent); }
+.database-engine-popup { z-index: 70; width: var(--radix-popover-trigger-width); max-width: calc(100vw - 32px); max-height: min(440px, var(--radix-popover-content-available-height)); display: flex; flex-direction: column; overflow: hidden; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 14px 40px #0003; }
+.database-engine-search { display: flex; flex: 0 0 auto; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.database-engine-search svg { width: 16px; height: 16px; color: var(--muted); flex-shrink: 0; }
+.database-engine-search input { width: 100%; border: 0; padding: 4px 0; border-radius: 0; background: transparent; outline: none; }
+.database-engine-search:focus-within { box-shadow: inset 0 -2px var(--accent); }
+.database-engine-results { flex: 1 1 auto; overflow-y: auto; scrollbar-gutter: stable; overscroll-behavior: contain; min-height: 0; padding: 6px; }
+.database-engine-options { display: flex; flex-direction: column; width: 100%; align-items: stretch; }
+.database-engine-group { width: 100%; }
+.database-engine-group-label { padding: 10px 10px 5px; font-size: 11px; font-weight: 600; color: var(--muted); }
+.database-engine-option[data-slot='toggle-group-item'] { display: flex; align-items: center; justify-content: flex-start; width: 100%; height: 38px; gap: 10px; padding: 6px 10px; border: 0; border-radius: 6px; text-align: left; font-weight: 400; }
+.database-engine-option:hover, .database-engine-option:focus-visible { background: var(--hover); }
+.database-engine-option[data-state='on'] { background: var(--selection); color: var(--text); }
+.database-engine-empty { margin: 0; padding: 24px 12px; text-align: center; color: var(--muted); }
+
+/* Real product artwork keeps its own colors and fixed geometry in every surface. */
+img.engine-icon { width: 20px; height: 20px; flex: 0 0 20px; object-fit: contain; display: inline-block; vertical-align: middle; }
+.database-engine-icon img.engine-icon { width: 20px; height: 20px; }
+.dark img.engine-icon:is(.db2, .valkey, .pinecone, .mariadb, .influxdb, .duckdb, .mysql, .hana, .neo4j, .mssql) { background: #fff; border-radius: 3px; padding: 2px; }

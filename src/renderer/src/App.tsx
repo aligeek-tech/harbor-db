@@ -1,3 +1,14 @@
+import { TimeSeriesBrowser } from './components/TimeSeriesBrowser'
+import { CqlBrowser } from './components/CqlBrowser'
+import { DynamoBrowser } from './components/DynamoBrowser'
+import { Neo4jBrowser } from './components/Neo4jBrowser'
+import { CouchdbBrowser } from './components/CouchdbBrowser'
+import { athenaTableDraft } from '@shared/athena'
+import { warehouseTableDraft } from '@shared/warehouses'
+import type { ReportDefinition } from '@shared/reports'
+import { hasDatabaseContext } from '@shared/capabilities'
+import { isKeyValueEngine } from '@shared/key-value'
+import { isLocalEngine, localDatabasePath } from '@shared/local-database'
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import {
   Anchor,
@@ -11,6 +22,8 @@ import {
   LoaderCircle,
   LockKeyhole,
   Plus,
+  Pin,
+  RotateCcw,
   Search,
   Shield,
   ShieldCheck,
@@ -20,6 +33,9 @@ import {
 } from 'lucide-react'
 import { Toaster, toast } from 'sonner'
 import type { ConnectionProfile, ObjectInfo, WorkspaceTab } from '@shared/contracts'
+import { boundQueryTarget, compatibleQueryTarget, type QueryDraft } from '@shared/query-target'
+import { applicationShortcut } from '@shared/shortcuts'
+import { platform, shortcutHint } from './lib/shortcuts'
 import { api, isDesktop } from './lib/api'
 import { engineNames, errorText, uid } from './lib/utils'
 import { useApp } from './store'
@@ -31,9 +47,13 @@ import { ConnectionDialog } from './components/ConnectionDialog'
 import { SettingsDialog } from './components/SettingsDialog'
 import { Sidebar } from './components/Sidebar'
 import { Library } from './components/Library'
+import { WorkspaceManager } from './components/WorkspaceManager'
+import { ResultComparison } from './components/ResultComparison'
 import { CommandPalette } from './components/CommandPalette'
 import { TableBrowser } from './components/TableBrowser'
 import { MongoBrowser } from './components/MongoBrowser'
+import { VectorBrowser } from './components/VectorBrowser'
+import { SearchWorkbench } from './components/SearchWorkbench'
 import { RedisBrowser } from './components/RedisBrowser'
 const QueryEditor = lazy(() =>
   import('./components/QueryEditor').then((module) => ({ default: module.QueryEditor })),
@@ -50,6 +70,8 @@ function Workbench() {
   const version = useApp((s) => s.version)
   const profiles = useApp((s) => s.profiles)
   const workspace = useApp((s) => s.workspace)
+  const savedQueries = useApp((s) => s.savedQueries)
+  const draftSaveState = useApp((s) => s.draftSaveState)
   const statuses = useApp((s) => s.statuses)
   const section = useApp((s) => s.section)
   const demo = useApp((s) => s.demo)
@@ -59,6 +81,7 @@ function Workbench() {
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [importProfiles, setImportProfiles] = useState<ConnectionProfile[] | null>(null)
   const [importing, setImporting] = useState(false)
+  const [queryTarget, setQueryTarget] = useState<QueryDraft | null>(null)
   const initialized = useRef(false)
   const visitedTabs = useRef(new Set<string>())
   const actionRef = useRef<(action: string) => void>(() => {})
@@ -89,31 +112,17 @@ function Workbench() {
   }, [workspace.settings.theme])
   useEffect(() => {
     const listener = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || !(e.ctrlKey || e.metaKey)) return
-      const key = e.key.toLowerCase()
-      const action =
-        key === 'k'
-          ? 'command-palette'
-          : key === 't'
-            ? 'new-query'
-            : key === 's'
-              ? 'save-query'
-              : key === 'w'
-                ? 'close-tab'
-                : key === 'enter'
-                  ? e.shiftKey
-                    ? 'run-script'
-                    : 'run-current'
-                  : null
-      if (action) {
-        e.preventDefault()
-        actionRef.current(action)
-      } else if (e.key === 'Tab') {
+      if (e.defaultPrevented) return
+      const action = applicationShortcut(e, platform)
+      if (action === 'next-tab' || action === 'previous-tab') {
         e.preventDefault()
         const w = useApp.getState().workspace
         const index = w.tabs.findIndex((t) => t.id === w.activeTabId)
-        const next = w.tabs[(index + (e.shiftKey ? -1 : 1) + w.tabs.length) % w.tabs.length]
+        const next = w.tabs[(index + (action === 'previous-tab' ? -1 : 1) + w.tabs.length) % w.tabs.length]
         if (next) useApp.getState().activate(next.id)
+      } else if (action) {
+        e.preventDefault()
+        actionRef.current(action)
       }
     }
     window.addEventListener('keydown', listener)
@@ -130,7 +139,9 @@ function Workbench() {
       for (const p of state.profiles) {
         if (
           !p.id.startsWith('demo-') &&
-          ['connected', 'reconnecting'].includes(state.statuses[p.id]?.state)
+          ['connected', 'reconnecting', 'degraded', 'authentication-failed'].includes(
+            state.statuses[p.id]?.state,
+          )
         ) {
           void api
             .status(p.id)
@@ -149,16 +160,25 @@ function Workbench() {
       useApp.getState().setStatus(profile.id, status)
       if (status.state !== 'connected') throw new Error(status.error || 'Connection failed')
       toast.success(`Connected to ${profile.name}`)
+      if (['elasticsearch', 'opensearch', 'qdrant', 'milvus', 'weaviate', 'pinecone'].includes(profile.engine)) {
+        openSearch(profile)
+        return
+      }
+      if (['influxdb','questdb'].includes(profile.engine)) { newQuery(profile); return }
+      if(profile.engine==='cassandra'){newQuery(profile);return}
+      if (profile.engine === 'dynamodb') { newQuery(profile); return }
+      if (profile.engine === 'neo4j') { newQuery(profile); return }
+      if (profile.engine === 'couchdb') { newQuery(profile); return }
       if (profile.engine === 'mongodb') {
         openMongo(profile)
         return
       }
       if (
-        profile.engine === 'redis' &&
+        isKeyValueEngine(profile.engine) &&
         !useApp.getState().workspace.tabs.some((t) => t.connectionId === profile.id && t.kind === 'redis')
       )
         openRedis(profile)
-      if (profile.engine !== 'redis') {
+      if (!isKeyValueEngine(profile.engine)) {
         try {
           const objects = !profile.database ? [] : await api.listObjects({ connectionId: profile.id })
           useApp.getState().setObjects(profile.id, objects)
@@ -170,7 +190,12 @@ function Workbench() {
       }
     } catch (e) {
       const error = errorText(e)
-      useApp.getState().setStatus(profile.id, { state: 'failed', error })
+      const status = useApp.getState().statuses[profile.id]
+      useApp.getState().setStatus(profile.id, {
+        ...status,
+        state: status?.state === 'authentication-failed' ? status.state : 'failed',
+        error,
+      })
       toast.error(error)
       setConnectionDialog({ profile })
     }
@@ -189,6 +214,11 @@ function Workbench() {
       setConnectionDialog({})
       return
     }
+    if (['influxdb','questdb'].includes(target.engine)) { useApp.getState().openTab({connectionId:target.id,kind:'timeseries',title:engineNames[target.engine]+' time series',sql:''});useApp.getState().setSection('connections');return }
+    if(target.engine==='cassandra'){useApp.getState().openTab({connectionId:target.id,kind:'cql',title:'Cassandra CQL',sql:'',database:target.database||undefined});useApp.getState().setSection('connections');return}
+    if (target.engine === 'dynamodb') { useApp.getState().openTab({connectionId:target.id,kind:'dynamodb',title:'DynamoDB items',sql:''});useApp.getState().setSection('connections');return }
+    if (target.engine === 'neo4j') { useApp.getState().openTab({connectionId:target.id,kind:'neo4j',title:'Neo4j Cypher',sql:'',database:target.database||undefined});useApp.getState().setSection('connections');return }
+    if (target.engine === 'couchdb') { useApp.getState().openTab({connectionId:target.id,kind:'couch',title:'CouchDB documents',sql:'',database:target.database||undefined});useApp.getState().setSection('connections');return }
     if (target.engine === 'mongodb') {
       useApp.getState().openTab({
         connectionId: target.id,
@@ -206,20 +236,25 @@ function Workbench() {
       useApp.getState().setSection('connections')
       return
     }
+    if (['elasticsearch', 'opensearch', 'qdrant', 'milvus', 'weaviate', 'pinecone'].includes(target.engine)) {
+      const vector = ['qdrant', 'milvus', 'weaviate', 'pinecone'].includes(target.engine)
+      useApp.getState().openTab({ connectionId: target.id, kind: 'search', title: `${engineNames[target.engine]} ${vector ? 'vectors' : 'search'}`, sql: vector ? '[]' : '{"query":{"match_all":{}}}', searchIndex: activeTab?.connectionId === target.id ? activeTab.searchIndex : undefined, searchPageSize: 200 })
+      useApp.getState().setSection('connections')
+      return
+    }
     const number = useApp.getState().workspace.tabs.filter((t) => t.kind === 'query').length + 1
-    const queryDatabase =
-      target.engine === 'postgres'
-        ? database ||
-          target.database ||
-          (activeTab?.connectionId === target.id ? activeTab.database : undefined)
-        : undefined
+    const queryDatabase = hasDatabaseContext(target.engine)
+      ? database ||
+        target.database ||
+        (activeTab?.connectionId === target.id ? activeTab.database : undefined)
+      : undefined
     useApp.getState().openTab({
       connectionId: target.id,
       ...(queryDatabase ? { database: queryDatabase } : {}),
       kind: 'query',
-      title: target.engine === 'redis' ? `Console ${number}` : `Query ${number}`,
+      title: isKeyValueEngine(target.engine) ? `Console ${number}` : `Query ${number}`,
       sql:
-        target.engine === 'redis'
+        isKeyValueEngine(target.engine)
           ? 'PING'
           : `-- ${target.name} · ${queryDatabase || target.database || 'Choose a database'}\nSELECT 1;`,
     })
@@ -247,9 +282,26 @@ function Workbench() {
       })
     state.setSection('connections')
   }
+  function openSearch(profile: ConnectionProfile) {
+    const state = useApp.getState()
+    const existing = state.workspace.tabs.find((tab) => tab.kind === 'search' && tab.connectionId === profile.id)
+    if (existing) state.activate(existing.id)
+    else newQuery(profile)
+    state.setSection('connections')
+  }
   function openObject(profile: ConnectionProfile, object: ObjectInfo) {
-    const database =
-      profile.engine === 'postgres' ? object.database || profile.database || undefined : undefined
+    if (profile.engine === 'athena') {
+      useApp.getState().openTab({ connectionId: profile.id, database: object.database || profile.database, schema: object.database || profile.database, kind: 'query', title: object.name + ' (review job)', sql: athenaTableDraft(profile.athena.catalog, object.database || profile.database, object.name) })
+      return
+    }
+    if (profile.engine === 'bigquery' || profile.engine === 'snowflake' || profile.engine === 'databricks') {
+      useApp.getState().openTab({ connectionId: profile.id, database: object.database || profile.database, schema: object.schema, kind: 'query', title: object.name + ' (review job)', sql: warehouseTableDraft(profile.engine, object.database || profile.database, object.schema, object.name) })
+      useApp.getState().setSection('connections')
+      return
+    }
+    const database = hasDatabaseContext(profile.engine)
+      ? object.database || profile.database || undefined
+      : undefined
     const existing = useApp
       .getState()
       .workspace.tabs.find(
@@ -274,6 +326,10 @@ function Workbench() {
     useApp.getState().setSection('connections')
   }
   async function closeTab(tab: WorkspaceTab) {
+    if (tab.pinned) {
+      toast.info('Unpin this tab before closing it.')
+      return
+    }
     const runtime = useApp.getState().runtime[tab.id]
     if (runtime?.running) {
       toast.info('Cancel the running operation before closing this tab.')
@@ -310,7 +366,7 @@ function Workbench() {
     }
   }
   async function saveQuery(tab = activeTab) {
-    if (!tab || (tab.kind !== 'query' && tab.kind !== 'table' && tab.kind !== 'mongo')) return
+    if (!tab || !['query', 'table', 'mongo', 'search'].includes(tab.kind)) return
     const target = profiles.find((p) => p.id === tab.connectionId)
     if (!target) return
     const name = await confirm({
@@ -322,51 +378,71 @@ function Workbench() {
     })
     if (name === false) return
     try {
+      const previous = useApp.getState().savedQueries.find((query) => query.id === tab.savedQueryId)
+      const savedQueryId = previous?.id || uid()
       await api.saveQuery({
-        id: uid(),
+        id: savedQueryId,
         name,
         sql: tab.sql,
         engine: target.engine,
+        schema: tab.schema || target.schema,
+        parameterDefinitions: tab.parameterDefinitions,
         connectionId: target.id.startsWith('demo-') ? undefined : target.id,
         ...(target.engine === 'mongodb'
           ? { collection: tab.table || undefined, mongoMode: tab.mongoMode || 'find' }
           : {}),
-        ...(['postgres', 'mongodb'].includes(target.engine) && (tab.database || target.database)
+        ...(tab.kind === 'search' ? { searchIndex: tab.searchIndex, searchPageSize: tab.searchPageSize } : {}),
+        ...((hasDatabaseContext(target.engine) || target.engine === 'mongodb') && (tab.database || target.database)
           ? { database: tab.database || target.database }
           : {}),
-        folder: '',
-        tags: [],
+        folder: previous?.folder || '',
+        tags: previous?.tags || [],
         updatedAt: new Date().toISOString(),
       })
-      if (tab.kind === 'query') useApp.getState().updateTab(tab.id, { title: name })
+      useApp.getState().updateTab(tab.id, { ...(['query', 'search'].includes(tab.kind) ? { title: name } : {}), savedQueryId })
       await useApp.getState().refreshMetadata()
       toast.success('Query saved')
     } catch (e) {
       toast.error(errorText(e))
     }
   }
-  function openSaved(query: {
-    name: string
-    sql: string
-    connectionId?: string
-    database?: string
-    collection?: string
-    mongoMode?: 'find' | 'aggregate'
-  }) {
-    const target = profiles.find((p) => p.id === query.connectionId) || resolveProfile()
+  function openSaved(query: QueryDraft) {
+    const target = boundQueryTarget(query, profiles)
     if (!target) {
-      toast.info('Add a connection before opening a query.')
-      setConnectionDialog({})
+      setQueryTarget(query)
       return
     }
+    openTargetedQuery(query, target)
+  }
+  function openReport(report: ReportDefinition) {
+    openSaved({
+      reportId: report.id,
+      name: report.name,
+      sql: report.sql,
+      engine: 'duckdb',
+      connectionId: report.connectionId,
+      database: report.database,
+      parameterDefinitions: report.parameterDefinitions,
+    })
+  }
+  function openTargetedQuery(query: QueryDraft, target: ConnectionProfile) {
+    if (!compatibleQueryTarget(query, target)) return
     useApp.getState().openTab({
       connectionId: target.id,
-      ...(query.database ? { database: query.database } : {}),
-      kind: target.engine === 'mongodb' ? 'mongo' : 'query',
+      ...(query.database || target.database ? { database: query.database || target.database } : {}),
+      // The physical connection owns search_path/default schema. A saved schema
+      // is provenance, not permission to silently retarget that session.
+      schema: target.schema,
+      parameterDefinitions: query.parameterDefinitions,
+      savedQueryId: query.savedQueryId,
+      reportId: query.reportId,
+      kind: ['elasticsearch', 'opensearch'].includes(target.engine) ? 'search' : target.engine === 'mongodb' ? 'mongo' : 'query',
+      ...(['elasticsearch', 'opensearch'].includes(target.engine) ? { searchIndex: query.searchIndex, searchPageSize: query.searchPageSize } : {}),
       ...(target.engine === 'mongodb' ? { table: query.collection, mongoMode: query.mongoMode } : {}),
       title: query.name,
       sql: query.sql,
     })
+    setQueryTarget(null)
     useApp.getState().setSection('connections')
   }
   async function importSql() {
@@ -409,6 +485,7 @@ function Workbench() {
     }
   }
   actionRef.current = (action) => {
+    if (useApp.getState().switchingWorkspace) return
     switch (action) {
       case 'new-connection':
         setConnectionDialog({})
@@ -477,9 +554,10 @@ function Workbench() {
         <button className="global-search" onClick={() => setPaletteOpen(true)}>
           <Search />
           <span>Search anything…</span>
-          <kbd>Ctrl K</kbd>
+          <kbd>{shortcutHint('command-palette')}</kbd>
         </button>
         <div className="topbar-actions">
+          <WorkspaceManager />
           <Button variant="outline" onClick={() => newQuery()}>
             <Plus />
             New query
@@ -501,55 +579,95 @@ function Workbench() {
           onImport={() => void previewImport()}
         />
         <main className="main-area">
-          <div className="tabs" role="tablist" aria-label="Workspace tabs">
-            {workspace.tabs.map((tab) => (
-              <div
-                role="tab"
-                tabIndex={0}
-                aria-selected={tab.id === workspace.activeTabId}
-                key={tab.id}
-                className={`tab ${tab.id === workspace.activeTabId && section === 'connections' ? 'active' : ''}`}
-                draggable
-                onDragStart={(e) => e.dataTransfer.setData('text/harbor-tab', tab.id)}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => {
-                  e.preventDefault()
-                  useApp.getState().reorderTab(e.dataTransfer.getData('text/harbor-tab'), tab.id)
-                }}
-                onClick={() => {
-                  useApp.getState().activate(tab.id)
-                  useApp.getState().setSection('connections')
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
+          <div className="flex min-w-0 shrink-0 border-b border-[var(--line)]">
+            <div className="tabs flex-1" role="tablist" aria-label="Workspace tabs">
+              {workspace.tabs.map((tab) => (
+                <div
+                  role="tab"
+                  id={`workspace-tab-${tab.id}`}
+                  aria-controls={`workspace-panel-${tab.id}`}
+                  tabIndex={tab.id === workspace.activeTabId ? 0 : -1}
+                  aria-selected={tab.id === workspace.activeTabId}
+                  key={tab.id}
+                  className={`tab ${tab.id === workspace.activeTabId && section === 'connections' ? 'active' : ''}`}
+                  draggable
+                  onDragStart={(e) => e.dataTransfer.setData('text/harbor-tab', tab.id)}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault()
+                    useApp.getState().reorderTab(e.dataTransfer.getData('text/harbor-tab'), tab.id)
+                  }}
+                  onClick={() => {
                     useApp.getState().activate(tab.id)
                     useApp.getState().setSection('connections')
-                  }
-                }}
-                title={`${tab.title} · ${profiles.find((p) => p.id === tab.connectionId)?.name || 'Connection removed'}${tab.database ? ` · ${tab.database}` : ''}`}
-              >
-                {tab.kind === 'table' ? <Table2 /> : tab.kind === 'redis' ? <Database /> : <FileCode2 />}
-                <span>{tab.title}</span>
-                <button
-                  className="icon-button small"
-                  aria-label={`Close ${tab.title}`}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    void closeTab(tab)
                   }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Delete') {
+                      e.preventDefault()
+                      void closeTab(tab)
+                      return
+                    }
+                    if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) {
+                      e.preventDefault()
+                      const index = workspace.tabs.findIndex((item) => item.id === tab.id)
+                      const next =
+                        workspace.tabs[
+                          e.key === 'Home'
+                            ? 0
+                            : e.key === 'End'
+                              ? workspace.tabs.length - 1
+                              : (index + (e.key === 'ArrowRight' ? 1 : workspace.tabs.length - 1)) %
+                                workspace.tabs.length
+                        ]
+                      if (next) {
+                        useApp.getState().activate(next.id)
+                        document.getElementById(`workspace-tab-${next.id}`)?.focus()
+                      }
+                      return
+                    }
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      useApp.getState().activate(tab.id)
+                      useApp.getState().setSection('connections')
+                    }
+                  }}
+                  title={`${tab.title} · ${profiles.find((p) => p.id === tab.connectionId)?.name || 'Connection removed'}${tab.database ? ` · ${tab.database}` : ''}`}
                 >
+                  {tab.kind === 'table' ? <Table2 /> : tab.kind === 'redis' ? <Database /> : <FileCode2 />}
+                  {tab.pinned && <Pin aria-label="Pinned tab" />}
+                  <span>{tab.title}</span>
+                  {tab.savedQueryId &&
+                    savedQueries.some(
+                      (query) =>
+                        query.id === tab.savedQueryId &&
+                        (query.sql !== tab.sql ||
+                          JSON.stringify(query.parameterDefinitions || []) !==
+                            JSON.stringify(tab.parameterDefinitions || [])),
+                    ) && (
+                      <span
+                        aria-label="Changed from saved query"
+                        title="This draft differs from the saved query. Local draft saving is independent."
+                      >
+                        ●
+                      </span>
+                    )}
+                </div>
+              ))}
+            </div>
+            <div className="tab-add flex gap-1 pr-2">
+              <ResultComparison />
+              {activeTab && (
+                <IconButton label={`Close ${activeTab.title}`} onClick={() => void closeTab(activeTab)}>
                   <X />
-                </button>
-              </div>
-            ))}
-            <div className="tab-add">
-              <IconButton label="New query · Ctrl+T" onClick={() => newQuery()}>
+                </IconButton>
+              )}
+              <IconButton label={`New query · ${shortcutHint('new-query')}`} onClick={() => newQuery()}>
                 <Plus />
               </IconButton>
             </div>
           </div>
           {section !== 'connections' && (
-            <Library section={section} onOpenQuery={openSaved} onImportSql={() => void importSql()} />
+            <Library section={section} onOpenQuery={openSaved} onOpenReport={openReport} onImportSql={() => void importSql()} />
           )}
           <div className="query-workspace" style={{ display: section === 'connections' ? 'flex' : 'none' }}>
             {activeTab && activeProfile ? (
@@ -559,17 +677,29 @@ function Workbench() {
                     <EngineIcon engine={activeProfile.engine} />
                     {activeProfile.name}
                   </div>
+                  <span className="text-xs opacity-70">
+                    {isLocalEngine(activeProfile.engine)
+                      ? localDatabasePath(activeProfile)
+                      : `${activeProfile.host}:${activeProfile.port}`}
+                  </span>
                   <span className="slash">/</span>
                   <span>
-                    {activeProfile.engine === 'redis'
+                    {isKeyValueEngine(activeProfile.engine)
                       ? `db ${activeProfile.redisDb}`
-                      : activeProfile.engine === 'mariadb' &&
+                      : activeProfile.engine === 'dynamodb' ? activeProfile.dynamo.region
+                      : ['qdrant', 'milvus', 'weaviate', 'pinecone'].includes(activeProfile.engine)
+                        ? activeTab.searchIndex || 'Choose a collection or index'
+                      : ['elasticsearch', 'opensearch'].includes(activeProfile.engine)
+                        ? activeTab.searchIndex || 'Choose an index or pattern'
+                      : ['mariadb', 'mysql'].includes(activeProfile.engine) &&
                           activeTab.kind === 'table' &&
                           !activeRuntime?.tableQueryMode
                         ? activeTab.schema || activeProfile.database || 'No default database'
-                        : activeTab.database || activeProfile.database || 'Choose a database'}
+                        : activeTab.database ||
+                          activeProfile.database ||
+                          (isLocalEngine(activeProfile.engine) ? 'main' : 'Choose a database')}
                   </span>
-                  {activeProfile.engine === 'postgres' && (
+                  {['postgres', 'sqlite', 'duckdb'].includes(activeProfile.engine) && (
                     <>
                       <span className="slash">/</span>
                       <span>{activeTab.schema || activeProfile.schema}</span>
@@ -583,7 +713,7 @@ function Workbench() {
                       <Shield />
                       {activeProfile.readOnly ? 'Read-only' : 'Writes enabled'}
                     </span>
-                    {activeProfile.engine === 'redis' && (
+                    {isKeyValueEngine(activeProfile.engine) && (
                       <Button
                         variant="ghost"
                         size="sm"
@@ -623,10 +753,47 @@ function Workbench() {
                   return (
                     <div
                       key={tab.id}
+                      id={`workspace-panel-${tab.id}`}
+                      role="tabpanel"
+                      aria-labelledby={`workspace-tab-${tab.id}`}
                       className="query-workspace"
                       style={{ display: tab.id === workspace.activeTabId ? 'flex' : 'none' }}
                     >
-                      {profile.engine === 'mongodb' ? (
+                      {useApp.getState().runtime[tab.id]?.restored ? (
+                        <div className="center-empty">
+                          <RotateCcw />
+                          <h3>Restored tab · no query executed</h3>
+                          <p>
+                            Review {profile.name} /{' '}
+                            {tab.searchIndex || tab.database || profile.database || tab.schema || 'default namespace'} before
+                            loading. Results, staged changes and transactions were not restored.
+                          </p>
+                          <Button
+                            disabled={statuses[profile.id]?.state !== 'connected'}
+                            onClick={() => useApp.getState().setRuntime(tab.id, { restored: false })}
+                          >
+                            {tab.kind === 'redis'
+                              ? 'Open key browser'
+                              : ['mongo', 'couch'].includes(tab.kind)
+                                ? 'Open document browser'
+                                : tab.kind === 'timeseries' ? 'Open time-series workspace' : tab.kind === 'search' ? 'Open search workspace' : 'Open table view'}
+                          </Button>
+                        </div>
+                      ) : ['qdrant', 'milvus', 'weaviate', 'pinecone'].includes(profile.engine) ? (
+                        <VectorBrowser tab={tab} profile={profile} />
+                      ) : ['elasticsearch', 'opensearch'].includes(profile.engine) ? (
+                        <SearchWorkbench tab={tab} profile={profile} onSave={() => void saveQuery(tab)} />
+                      ) : ['influxdb','questdb'].includes(profile.engine) ? (
+                        <TimeSeriesBrowser profile={profile} tab={tab} />
+                      ) : profile.engine === 'cassandra' ? (
+                        <CqlBrowser profile={profile} tab={tab} />
+                      ) : profile.engine === 'dynamodb' ? (
+                        <DynamoBrowser profile={profile} tab={tab} />
+                      ) : profile.engine === 'neo4j' ? (
+                        <Neo4jBrowser tab={tab} profile={profile} />
+                      ) : profile.engine === 'couchdb' ? (
+                        <CouchdbBrowser tab={tab} profile={profile} />
+                      ) : profile.engine === 'mongodb' ? (
                         <MongoBrowser tab={tab} profile={profile} onSave={() => void saveQuery(tab)} />
                       ) : tab.kind === 'query' ? (
                         <Suspense fallback={<Loading text="Loading editor…" />}>
@@ -635,6 +802,7 @@ function Workbench() {
                             profile={profile}
                             visible={tab.id === workspace.activeTabId}
                             onSave={() => void saveQuery(tab)}
+                            onOpenReport={openReport}
                           />
                         </Suspense>
                       ) : tab.kind === 'table' ? (
@@ -683,6 +851,24 @@ function Workbench() {
             Private session
           </span>
         )}
+        <span
+          title={
+            workspace.settings.privateSession
+              ? 'Current private drafts and recently closed tabs stay in memory.'
+              : 'Local draft saving is separate from named saved queries.'
+          }
+        >
+          {workspace.name} ·{' '}
+          {workspace.settings.privateSession
+            ? 'Private drafts'
+            : draftSaveState === 'saved'
+              ? 'Drafts saved locally'
+              : draftSaveState === 'saving'
+                ? 'Saving drafts…'
+                : draftSaveState === 'pending'
+                  ? 'Draft changes not saved yet'
+                  : 'Draft saving failed'}
+        </span>
         {!isDesktop && <span className="warning">Browser preview</span>}
         {demo && (
           <button className="muted" onClick={() => useApp.getState().exitDemo()}>
@@ -690,7 +876,18 @@ function Workbench() {
           </button>
         )}
         <div className="right">
-          <span className="status-item">
+          <span
+            className="status-item"
+            title={[
+              activeStatus?.checkedAt && `Checked: ${activeStatus.checkedAt}`,
+              activeStatus?.changedAt && `Changed: ${activeStatus.changedAt}`,
+              activeStatus?.lastConnectedAt &&
+                `Last authenticated connection: ${activeStatus.lastConnectedAt}`,
+              activeStatus?.error,
+            ]
+              .filter(Boolean)
+              .join('\n')}
+          >
             <span className={`status-dot ${activeStatus?.state || 'disconnected'}`} />
             {activeProfile?.id.startsWith('demo-')
               ? 'Demo · example data'
@@ -723,6 +920,80 @@ function Workbench() {
       {connectionDialog && (
         <ConnectionDialog initial={connectionDialog.profile} onClose={() => setConnectionDialog(null)} />
       )}{' '}
+      <Dialog
+        open={!!queryTarget}
+        onOpenChange={(open) => {
+          if (!open) setQueryTarget(null)
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Choose query target</DialogTitle>
+            <DialogDescription>
+              Open {queryTarget?.name} as a draft. This does not connect or execute it. Review the server,
+              database, and schema before running.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-2 max-h-96 overflow-auto">
+            {profiles.map((profile) => {
+              const compatible = !!queryTarget && compatibleQueryTarget(queryTarget, profile)
+              return (
+                <Button
+                  key={profile.id}
+                  variant="outline"
+                  className="h-auto justify-start whitespace-normal text-left"
+                  disabled={!compatible}
+                  onClick={() => {
+                    if (queryTarget) openTargetedQuery(queryTarget, profile)
+                  }}
+                >
+                  <EngineIcon engine={profile.engine} />
+                  <span>
+                    {profile.name}
+                    <small className="block">
+                      {engineNames[profile.engine]} ·{' '}
+                      {isLocalEngine(profile.engine)
+                        ? localDatabasePath(profile)
+                        : `${profile.host}:${profile.port}`}{' '}
+                      / {queryTarget?.database || profile.database || 'Choose database in tab'} /{' '}
+                      {profile.schema || 'default schema'} · {profile.environment}
+                    </small>
+                    {queryTarget?.schema && queryTarget.schema !== profile.schema && (
+                      <small className="block">
+                        Saved namespace: {queryTarget.schema}. This target keeps its configured default
+                        schema; SQL text stays unchanged.
+                      </small>
+                    )}
+                    {!compatible && (
+                      <small className="block">
+                        {queryTarget?.engine
+                          ? `Requires ${engineNames[queryTarget.engine]}`
+                          : 'Requires a SQL connection'}
+                      </small>
+                    )}
+                  </span>
+                </Button>
+              )
+            })}
+            {!profiles.some((profile) => queryTarget && compatibleQueryTarget(queryTarget, profile)) && (
+              <p>No compatible connection. Add one, then open this query again.</p>
+            )}
+          </div>
+          <div className="dialog-actions">
+            <Button variant="outline" onClick={() => setQueryTarget(null)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                setQueryTarget(null)
+                setConnectionDialog({})
+              }}
+            >
+              Add connection
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}{' '}
       {paletteOpen && (
         <CommandPalette
@@ -873,10 +1144,10 @@ function Welcome({
         </button>
         <div className="welcome-shortcuts">
           <span>
-            <kbd>Ctrl K</kbd>Find anything
+            <kbd>{shortcutHint('command-palette')}</kbd>Find anything
           </span>
           <span>
-            <kbd>Ctrl T</kbd>New query
+            <kbd>{shortcutHint('new-query')}</kbd>New query
           </span>
           <span>
             <ShieldCheck />

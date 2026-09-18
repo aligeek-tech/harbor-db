@@ -80,6 +80,23 @@ describe.skipIf(!enabled)('Standalone Redis integration', () => {
     expect(pages).toBeGreaterThan(1)
   }, 30000)
 
+  it('bounds ten concurrent scans before driver admission and recovers after completion', async () => {
+    const input = { connectionId: profile.id, cursor: '0', pattern: `${prefix}scan:*`, count: 200 }
+    const results = await Promise.allSettled(Array.from({ length: 10 }, () => service.scan(input)))
+    const admitted = results.filter((result) => result.status === 'fulfilled')
+    const rejected = results.filter((result) => result.status === 'rejected')
+    expect(admitted).toHaveLength(2)
+    expect(rejected).toHaveLength(8)
+    for (const result of rejected) {
+      expect(String(result.reason)).toContain('2 key scans running')
+      expect(String(result.reason)).toContain('no scan was started')
+      expect(String(result.reason)).not.toContain('queue is full')
+    }
+    const next = await service.scan(input)
+    expect(next.keys.length).toBeGreaterThan(0)
+    expect(service.status(profile.id).state).toBe('connected')
+  })
+
   it('preserves TTL during atomic string updates and rejects stale edits', async () => {
     await control.set(key('cas'), 'before', { EX: 90 })
     const original = await inspect('cas')

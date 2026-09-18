@@ -1,0 +1,9 @@
+# InfluxDB and QuestDB driver preflight
+
+2026-09-18. Native HTTP adapters use Node HTTP/TLS and existing lossless-json4.3.1. No new runtime package, lifecycle script, native ABI dependency or cloud discovery. InfluxDB OSS2.9.1 is MIT licensed; QuestDB10.0.1 Apache2.0. Upstream license files and official engine API docs inspected. Supported generations are explicit: InfluxDB2 Flux (no1/3/InfluxQL claim), QuestDB10.0.x HTTP SQL (noPGWire/QWP equivalence).
+
+Official ARM64 fixture manifests: influxdb2.9.1 `sha256:f8af6f227b5932201b7714580b9d569a3fb88a8d63af9451a61f436f55c15d4d` (indexf75e48af0598e8aec7986e991a848d19a119101a7d563a2e5db1dfaac9c45daa), questdb/questdb10.0.1 `sha256:104242d1680062a7631d3347557ff4c35f60e5569684f42155ac37c05e5b1da6` (index67eaed863ebb2383227919ea9a5499a4a39ceca3862c20b974c84a10e11cdf89). Unique disposable container/network/data only, localhost18086/19000, each1CPU1GiB; no host database mounts, no external business data. Telemetry disabled explicitly. Planned, not yet native-tested at this checkpoint.
+
+Generated Flux bounds source/time/tags/aggregation. Arbitrary Flux functions are not accepted because network and write side effects exist. Annotated CSV keeps exact integer/nanosecond text and group tables, handles late error tables, global row/byte/table caps. QuestDB HTTP has no per-request readonly transaction; safe browsing is generated from current designated-timestamp metadata. RawSQL requires a write-enabled profile plus per-run exact target confirmation. Actual server principal remains authoritative. No write replay. BINARY HTTP results rejected rather than misrepresented. No cloud transmission is activated by installing this adapter.
+
+References: https://docs.influxdata.com/influxdb/v2/reference/syntax/annotated-csv/ , https://docs.influxdata.com/influxdb/v2/api-guide/api_intro/ , https://questdb.com/docs/connect/compatibility/rest-api/ , https://questdb.com/docs/query/functions/meta/ .

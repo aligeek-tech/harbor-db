@@ -7,6 +7,7 @@ import { Client } from 'pg'
 import mariadb, { type Connection } from 'mariadb'
 import { profileSchema, type ConnectionProfile } from '../src/shared/contracts'
 import { inspectElectronSandbox, waitForElectronWorkspace } from './electron-runtime'
+import { typeSql } from './editor-input'
 
 const root = resolve(import.meta.dirname, '..')
 
@@ -57,15 +58,6 @@ async function draft(page: Page, table: string, connectionId: string) {
       )?.sql || '',
     { table, connectionId },
   )
-}
-async function typeSql(page: Page, sql: string) {
-  const editor = page.locator('.monaco-editor:visible textarea').first()
-  await expect(editor).toBeVisible()
-  await editor.focus()
-  await editor.press('ControlOrMeta+Home')
-  await editor.press('ControlOrMeta+Shift+End')
-  await editor.pressSequentially(sql)
-  return editor
 }
 
 for (const engine of ['postgres', 'mariadb'] as const) {
@@ -248,10 +240,11 @@ for (const engine of ['postgres', 'mariadb'] as const) {
       await page.getByRole('button', { name: 'Previous page', exact: true }).click()
       await expect.poll(() => draft(page, table, profile.id)).toMatch(/OFFSET\s+0/i)
       await page.getByRole('button', { name: 'Server-side filter', exact: true }).click()
-      await page.getByLabel('Filter column', { exact: true }).selectOption('bucket')
-      await page.getByLabel('Filter condition', { exact: true }).selectOption('equals')
-      await page.getByLabel('Filter value', { exact: true }).fill('sample')
-      await page.getByRole('button', { name: 'Apply filter', exact: true }).click()
+      await page.getByRole('button', { name: 'Add server filter', exact: true }).click()
+      await page.getByLabel('Server filter 1 column', { exact: true }).selectOption('bucket')
+      await page.getByLabel('Server filter 1 operator', { exact: true }).selectOption('equals')
+      await page.getByLabel('Server filter 1 value', { exact: true }).fill('sample')
+      await page.getByRole('button', { name: 'Apply server view', exact: true }).click()
       await expect.poll(() => draft(page, table, profile.id)).toContain("'sample'")
       await expect.poll(() => draft(page, table, profile.id)).toMatch(/WHERE/i)
       await expect(grid(page).locator('table')).toHaveAttribute('aria-rowcount', '9')
@@ -265,12 +258,10 @@ for (const engine of ['postgres', 'mariadb'] as const) {
       await page.getByRole('button', { name: 'Stage change', exact: true }).click()
       await expect(page.locator('.pending-bar:visible')).toContainText('1 changes ready to apply')
       await expect(
-        page.locator('.editor-region:visible').getByRole('button', { name: /^Run Ctrl/ }),
+        page.locator('.editor-region:visible').getByRole('button', { name: /^Run (?:Command|Ctrl)\+Enter/ }),
       ).toBeDisabled()
       await expect(page.getByRole('button', { name: 'Run script', exact: true })).toBeDisabled()
-      await expect(
-        page.getByRole('button', { name: 'Explain current statement (does not execute it)', exact: true }),
-      ).toBeDisabled()
+      await expect(page.getByRole('button', { name: 'Inspect query plan', exact: true })).toBeDisabled()
       const editor = page.locator('.monaco-editor:visible textarea').first()
       await editor.focus()
       await editor.press('ControlOrMeta+Enter')
@@ -301,13 +292,17 @@ for (const engine of ['postgres', 'mariadb'] as const) {
         `SELECT id AS duplicate, (3 - id) AS duplicate FROM ${target} WHERE id IN (1, 2) ORDER BY id;`,
       )
       await duplicateEditor.press('ControlOrMeta+Enter')
-      const duplicateSort = grid(page).getByRole('button', { name: 'Sort duplicate ascending', exact: true })
+      const duplicateSort = grid(page).getByRole('button', {
+        name: /^Sort duplicate \(column [12]\) ascending$/,
+      })
       await expect(duplicateSort).toHaveCount(2)
       await duplicateSort.nth(1).click()
       await expect(grid(page).locator('tbody tr[aria-rowindex]').first().locator('td').nth(2)).toHaveText('2')
       await expect(duplicateSort.nth(0)).toHaveAttribute('aria-pressed', 'false')
       await expect(duplicateSort.nth(1)).toHaveAttribute('aria-pressed', 'true')
-      await grid(page).getByRole('button', { name: 'Sort duplicate descending', exact: true }).nth(1).click()
+      await grid(page)
+        .getByRole('button', { name: 'Sort duplicate (column 2) descending', exact: true })
+        .click()
       await expect(grid(page).locator('tbody tr[aria-rowindex]').first().locator('td').nth(2)).toHaveText('1')
       await page.getByRole('button', { name: 'Return to table', exact: true }).click()
       await page.getByRole('dialog').getByRole('button', { name: 'Load table query', exact: true }).click()
@@ -375,6 +370,9 @@ for (const engine of ['postgres', 'mariadb'] as const) {
       expect(consoleErrors).toEqual([])
     } finally {
       if (desktop) {
+        // A failed assertion may leave staged changes and the normal close-confirmation open.
+        // Stop only this disposable fixture application; cleanup must not wait for UI consent.
+        await desktop.evaluate(({ app }) => app.exit(0)).catch(() => {})
         await desktop.close()
       }
       if (pg) {

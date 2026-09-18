@@ -4,8 +4,9 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 const callbacks = vi.hoisted(() => new Map<string, (event: unknown, input?: unknown) => Promise<unknown>>())
 vi.mock('electron', () => ({
-  app: { getVersion: () => 'test' },
+  app: { getVersion: () => 'test', isPackaged: false },
   dialog: {},
+  clipboard: { writeText: vi.fn() },
   ipcMain: {
     handle: (name: string, callback: (event: unknown, input?: unknown) => Promise<unknown>) =>
       callbacks.set(name, callback),
@@ -46,6 +47,9 @@ function boundary() {
     disconnect: vi.fn().mockResolvedValue(undefined),
     status: vi.fn().mockReturnValue({ state: 'disconnected' }),
     execute: vi.fn(),
+    transaction: vi.fn(),
+    applyEdits: vi.fn(),
+    streamQuery: vi.fn(),
   }
   const mainFrame = { url: 'file:///app/index.html' }
   const webContents = { mainFrame }
@@ -71,6 +75,62 @@ function boundary() {
 }
 
 describe('IPC boundary validation', () => {
+  it('previews only aggregate diagnostic facts and rejects renderer-added fields', async () => {
+    const { store, invoke } = boundary()
+    store.saveProfile(
+      profileSchema.parse({
+        id: 'private-profile-id',
+        name: 'CANARY_PROFILE_CUSTOMER_PRODUCTION',
+        engine: 'postgres',
+        host: 'db.private.example',
+        port: 5432,
+        username: 'private-owner@example.com',
+      }),
+    )
+    const workspace = store.workspace()
+    workspace.tabs = [
+      {
+        id: 'private-tab',
+        connectionId: 'private-profile-id',
+        kind: 'query',
+        title: 'Private customer query',
+        sql: "SELECT 'CANARY_SQL_PRIVATE'",
+      },
+    ]
+    store.saveWorkspace(workspace)
+    store.addHistory({
+      connectionId: 'private-profile-id',
+      sql: "SELECT 'CANARY_HISTORY_PRIVATE'",
+      executedAt: '2026-09-18T12:00:00.000Z',
+      durationMs: 1,
+      rowCount: 1,
+      success: true,
+    })
+    const bundle = await invoke('previewDiagnosticBundle')
+    const text = JSON.stringify(bundle)
+    for (const canary of [
+      'private-profile-id',
+      'CANARY_PROFILE_CUSTOMER_PRODUCTION',
+      'db.private.example',
+      'private-owner@example.com',
+      'Private customer query',
+      'CANARY_SQL_PRIVATE',
+      'CANARY_HISTORY_PRIVATE',
+    ])
+      expect(text).not.toContain(canary)
+    expect(bundle).toMatchObject({
+      storage: { counts: { profiles: 1, historyEntries: 1, openTabs: 1 } },
+      connections: { disconnected: 1 },
+      distribution: { automaticUpdates: false, signatureVerification: 'unknown' },
+    })
+    expect(
+      ipcSchemas.exportDiagnosticBundle.safeParse({
+        ...(bundle as object),
+        sql: 'renderer-added private text',
+      }).success,
+    ).toBe(false)
+  })
+
   it('does not route MongoDB operations through SQL connections', async () => {
     const { store, invoke } = boundary()
     store.saveProfile(
@@ -146,6 +206,39 @@ describe('IPC boundary validation', () => {
       ipcSchemas.exportSql.safeParse({ name: 'query', sql: 'select 1', path: '/etc/passwd' }).success,
     ).toBe(false)
     expect(ipcSchemas.bootstrap.safeParse({ channel: 'shell' }).success).toBe(false)
+  })
+  it('bounds write-only clipboard and never accepts renderer file paths for jobs', () => {
+    expect(ipcSchemas.copyText.safeParse('exact copy').success).toBe(true)
+    expect(ipcSchemas.copyText.safeParse('x'.repeat(8 * 1024 * 1024 + 1)).success).toBe(false)
+    expect(
+      ipcSchemas.startFullExport.safeParse({
+        connectionId: 'a',
+        sql: 'SELECT 1',
+        format: 'jsonl',
+        spreadsheetSafe: true,
+        consentRerun: true,
+        outputPath: '/tmp/overwrite',
+      }).success,
+    ).toBe(false)
+    expect(
+      ipcSchemas.previewAnalyticsFile.safeParse({
+        connectionId: 'a',
+        sessionId: 's',
+        requestId: 'r',
+        path: '/etc/passwd',
+      }).success,
+    ).toBe(false)
+    expect(
+      ipcSchemas.importAnalyticsFile.safeParse({
+        connectionId: 'a',
+        sessionId: 's',
+        requestId: 'r',
+        token: 'invalid',
+        schema: 'main',
+        table: 'new',
+        confirm: 'main.new',
+      }).success,
+    ).toBe(false)
   })
   it('allows only the application main frame with exact local URL', () => {
     const mainFrame = { url: 'file:///app/index.html' }

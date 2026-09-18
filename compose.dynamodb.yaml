@@ -1,0 +1,15 @@
+name: harbor-roadmap-dynamodb-y6pr0dek
+services:
+  dynamodb:
+    image: amazon/dynamodb-local@sha256:ff89bd48ff32cd8d9be5fee8873b65b8854dc408f1afe881be6eb00247bc0dab
+    platform: linux/arm64
+    command: ["-jar", "DynamoDBLocal.jar", "-inMemory", "-sharedDb", "-disableTelemetry"]
+    ports: ["127.0.0.1:18000:8000"]
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xms64m -Xmx320m -XX:ActiveProcessorCount=1"
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 128
+    logging:
+      driver: json-file
+      options: {max-size: "5m", max-file: "2"}

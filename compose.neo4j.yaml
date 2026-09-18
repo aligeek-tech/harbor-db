@@ -1,0 +1,24 @@
+name: harbor-roadmap-neo4j-y6pr0dek
+services:
+  neo4j:
+    image: neo4j:5.26.30-community-trixie@sha256:bb268a2f1b4f3c79e4bd1a00a82a6e63bbd4fcc4088da03c1b2380655f256cb2
+    platform: linux/arm64
+    cpus: 2
+    mem_limit: 1536m
+    pids_limit: 256
+    ports: ["127.0.0.1:17687:7687"]
+    environment:
+      NEO4J_AUTH: ${NEO4J_AUTH:?External disposable credentials required}
+      NEO4J_server_memory_heap_initial__size: 256m
+      NEO4J_server_memory_heap_max__size: 512m
+      NEO4J_server_memory_pagecache_size: 256m
+      NEO4J_server_http_enabled: "false"
+      NEO4J_server_https_enabled: "false"
+      NEO4J_dbms_usage__report_enabled: "false"
+    volumes: ["neo4j-data:/data", "neo4j-logs:/logs"]
+    logging:
+      driver: json-file
+      options: {max-size: "5m", max-file: "2"}
+volumes:
+  neo4j-data:
+  neo4j-logs:

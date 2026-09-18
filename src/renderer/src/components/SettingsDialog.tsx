@@ -1,6 +1,10 @@
+import { WorkspaceHandoff } from './WorkspaceHandoff'
+import { AutomationSettings } from './AutomationSettings'
+import { clearWorkspaceDrafts } from '@shared/workspaces'
 import { useState } from 'react'
 import {
   Download,
+  FileJson2,
   History,
   LockKeyhole,
   Monitor,
@@ -12,6 +16,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Settings } from '@shared/contracts'
+import type { DiagnosticBundle } from '@shared/diagnostic-bundle'
 import { useApp } from '../store'
 import { api, isDesktop } from '../lib/api'
 import { errorText } from '../lib/utils'
@@ -39,6 +44,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
   const [credentialId, setCredentialId] = useState('')
+  const [diagnosticPreview, setDiagnosticPreview] = useState<DiagnosticBundle>()
   const [numberDrafts, setNumberDrafts] = useState({
     editorFontSize: String(settings.editorFontSize),
     pageSize: String(settings.pageSize),
@@ -80,32 +86,19 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
       const accepted = await confirm({
         title: 'End this private session?',
         description:
-          'Text written in private mode will be discarded. Previously saved drafts will return to their last saved text, and future edits will be remembered.',
+          'Private drafts, tab changes and parameter values will be discarded. Staged changes are discarded and open transactions rolled back. Previously saved tabs return without executing queries. Cancel running operations first.',
         label: 'Discard private edits and resume',
         danger: true,
       })
       if (!accepted) return
       await perform('privacy', async () => {
-        const previous = await api.bootstrap()
-        const drafts = new Map(previous.workspace.tabs.map((tab) => [tab.id, tab]))
-        useApp.setState((state) => ({
-          workspace: {
-            ...state.workspace,
-            tabs: state.workspace.tabs.map((tab) => ({
-              ...tab,
-              sql: drafts.get(tab.id)?.sql || '',
-              cursor: drafts.get(tab.id)?.cursor || 0,
-              scrollTop: drafts.get(tab.id)?.scrollTop || 0,
-            })),
-            settings: { ...state.workspace.settings, privateSession: false },
-          },
-        }))
-        await useApp.getState().flush()
+        await useApp.getState().endPrivateSession()
         toast.success('Draft saving resumed')
       })
     } else {
-      setSettings({ privateSession: true })
       await perform('privacy', async () => {
+        await useApp.getState().flush()
+        setSettings({ privateSession: true })
         await useApp.getState().flush()
         toast.success('Private session started')
       })
@@ -117,7 +110,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
       !(await confirm({
         title: 'Clear all query drafts?',
         description:
-          'This clears editor text from open tabs and the saved workspace. Named saved queries and database data remain available.',
+          'This clears editor text from open tabs, recently closed tabs, and every named workspace. Named saved queries and database data remain available.',
         label: 'Clear drafts',
         danger: true,
       }))
@@ -127,10 +120,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
       // Update live state as well as persisted state; later debounced writes cannot restore it.
       await api.clearDrafts()
       useApp.setState((state) => ({
-        workspace: {
-          ...state.workspace,
-          tabs: state.workspace.tabs.map((tab) => ({ ...tab, sql: '', cursor: 0, scrollTop: 0 })),
-        },
+        workspace: clearWorkspaceDrafts(state.workspace),
       }))
       await useApp.getState().flush()
       toast.success('Query drafts cleared')
@@ -172,6 +162,20 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
       await api.forgetPassword(profile.id)
       await useApp.getState().refreshMetadata()
       toast.success('Remembered passwords removed')
+    })
+  }
+
+  async function reviewDiagnostics() {
+    await perform('diagnostics-preview', async () => {
+      setDiagnosticPreview(await api.previewDiagnosticBundle())
+    })
+  }
+
+  async function exportDiagnostics() {
+    if (!diagnosticPreview) return
+    await perform('diagnostics-export', async () => {
+      const result = await api.exportDiagnosticBundle(diagnosticPreview)
+      if (!result.cancelled) toast.success('Reviewed diagnostic bundle exported')
     })
   }
 
@@ -443,6 +447,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
             neither backs up the databases you manage.
           </FieldDescription>
           <div className="settings-actions">
+            <WorkspaceHandoff disabled={!!busy} />
             <Button
               variant="outline"
               disabled={!!busy || !isDesktop}
@@ -468,6 +473,58 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
               Reset layout
             </Button>
           </div>
+        </FieldSet>
+        <FieldSet className="setting-section">
+          <FieldLegend>Reusable local tasks</FieldLegend>
+          <AutomationSettings />
+        </FieldSet>
+        <FieldSet className="setting-section">
+          <FieldLegend>Diagnostics and updates</FieldLegend>
+          <Alert>
+            <FileJson2 />
+            <AlertTitle>Review a privacy-safe diagnostic bundle before saving</AlertTitle>
+            <AlertDescription>
+              The bundle contains runtime versions, aggregate counts, structured health codes and shipped
+              capability identifiers. It excludes credentials, connection names and endpoints, SQL, drafts,
+              history text, results, file paths, environment variables, process arguments and machine/user
+              identifiers.
+            </AlertDescription>
+          </Alert>
+          <FieldDescription>
+            Updates are manual downloads. Harbor DB has no automatic updater and will not install an update
+            during a query, transaction or other active write. Signature and notarization status remain unknown
+            unless the downloaded artifact is verified separately.
+          </FieldDescription>
+          <div className="settings-actions">
+            <Button
+              variant="outline"
+              disabled={!!busy || !isDesktop}
+              onClick={() => {
+                void reviewDiagnostics()
+              }}
+            >
+              <FileJson2 data-icon="inline-start" />
+              {diagnosticPreview ? 'Refresh diagnostic preview' : 'Review diagnostic bundle'}
+            </Button>
+            <Button
+              variant="outline"
+              disabled={!!busy || !isDesktop || !diagnosticPreview}
+              onClick={() => {
+                void exportDiagnostics()
+              }}
+            >
+              <Download data-icon="inline-start" />
+              Export reviewed bundle
+            </Button>
+          </div>
+          {diagnosticPreview ? (
+            <textarea
+              aria-label="Diagnostic bundle preview"
+              readOnly
+              rows={14}
+              value={JSON.stringify(diagnosticPreview, null, 2)}
+            />
+          ) : null}
         </FieldSet>
         <DialogFooter>
           <Button

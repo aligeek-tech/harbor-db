@@ -11,10 +11,13 @@ Minimal preload contextBridge
 Electron main
   ├─ IPC / native file dialogs / menus / shutdown handshake
   ├─ MetadataStore (SQLite) + CredentialService (OS safeStorage)
-  ├─ SqlService → node-postgres / official MariaDB connector
+  ├─ SqlService → node-postgres / official MariaDB connector (MariaDB and MySQL)
+  ├─ SqliteService → isolated node:sqlite workers, one physical connection per tab
+  ├─ MongoService → official MongoDB driver, canonical Extended JSON and topology health
   ├─ RedisService → official Redis client
   ├─ SSH2 transport → loopback forwarding + host verification
-  └─ Export worker → loaded-result CSV / ordered JSON
+  ├─ Export worker → loaded-result CSV / ordered JSON
+  └─ TransferService → dedicated read-only snapshots, bounded CSV / ordered JSONL jobs
 ```
 
 ## Contracts
@@ -44,6 +47,8 @@ Secure storage is injected into CredentialService so tests can cover unavailable
 | Desktop lifecycle and native menus     | `src/main/index.ts`             |
 | Validated operations and sender checks | `src/main/ipc.ts`               |
 | SQL sessions/explorers/edit generation | `src/main/engines/sql.ts`       |
+| MongoDB documents and live topology     | `src/main/engines/mongo.ts`     |
+| SQLite file/session workers             | `src/main/engines/sqlite*.ts`   |
 | Redis console/key operations           | `src/main/engines/redis.ts`     |
 | TLS and SSH transport                  | `src/main/engines/transport.ts` |
 | Metadata, credentials, export worker   | `src/main/persistence/`         |
@@ -52,3 +57,7 @@ Secure storage is injected into CredentialService so tests can cover unavailable
 | Tests                                  | `tests/`                        |
 
 The browser preview has no fake backend. The demo consists of clearly marked in-memory fixtures; execution is disabled. Desktop workflows always use the real privileged adapters.
+
+## Local roadmap candidate
+
+The current uncommitted roadmap work is tracked in `docs/roadmap/BACKLOG.md` and `docs/roadmap/PROGRESS.md`. These describe implementation and actual verification separately. Published release links still refer to 0.1.7; they are not evidence that local changes have shipped. DuckDB and further adapters must pass their per-engine acceptance before the support matrix is expanded.

@@ -1,4 +1,4 @@
-import { expect, type ElectronApplication, type Page } from '@playwright/test'
+import { expect, type ElectronApplication, type Page, type Locator } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 
 /** The preload bridge appears before the initial loadFile and renderer bootstrap finish. */
@@ -58,4 +58,12 @@ export async function inspectElectronSandbox(desktop: ElectronApplication, page:
   expect(kernel.rendererPidNamespaceDepth).toBeGreaterThan(kernel.mainPidNamespaceDepth)
   expect(kernel.rendererDisablesSandbox).toBe(false)
   return { ...launch, kernel }
+}
+
+/** Select through the searchable engine popup, preserving real form interaction. */
+export async function selectDatabaseEngine(scope: Page | Locator, name: string) {
+  await scope.getByRole('button', { name: /^Database engine:/ }).click()
+  const page = 'page' in scope ? scope.page() : scope
+  await page.getByRole('textbox', { name: 'Search databases', exact: true }).fill(name)
+  await page.getByRole('radio', { name, exact: true }).click()
 }

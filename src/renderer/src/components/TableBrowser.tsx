@@ -1,3 +1,6 @@
+import { engineSupports } from '@shared/capabilities'
+import { SchemaDiagram } from './SchemaDiagram'
+import { RelatedRecords } from './RelatedRecords'
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Check,
@@ -25,7 +28,7 @@ import type {
   WorkspaceTab,
 } from '@shared/contracts'
 import { api } from '../lib/api'
-import { qualifiedName, quoteIdentifier } from '@shared/sql'
+import { qualifiedName, quoteIdentifier, sqlDialect } from '@shared/sql'
 import { displayCell, errorText, uid } from '../lib/utils'
 import { useApp } from '../store'
 import { Button } from './ui/button'
@@ -33,7 +36,10 @@ import { Input } from './ui/input'
 import { Field, FieldGroup, FieldLabel } from './ui/field'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog'
 import { DataGrid } from './DataGrid'
+import { ServerTableViewControls } from './ServerTableViewControls'
+import { PendingChanges } from './PendingChanges'
 import { CsvImportDialog } from './CsvImportDialog'
+import { ImportWizard } from './ImportWizard'
 import { CopyButton, ErrorPanel, IconButton, Loading, useConfirm } from './common'
 
 const QueryEditor = lazy(() => import('./QueryEditor').then((module) => ({ default: module.QueryEditor })))
@@ -70,12 +76,12 @@ export function TableBrowser({
   const [offset, setOffset] = useState(0)
   const [sort, setSort] = useState<{ column: string; direction: 'asc' | 'desc' }>()
   const [filter, setFilter] = useState<TableInput['filter']>()
+  const [serverFilters, setServerFilters] = useState<TableInput['filters']>()
+  const [serverSorts, setServerSorts] = useState<TableInput['sorts']>()
   const [filterOpen, setFilterOpen] = useState(false)
-  const [filterColumn, setFilterColumn] = useState('')
-  const [filterValue, setFilterValue] = useState('')
-  const [filterOperator, setFilterOperator] = useState<'contains' | 'equals' | 'is null'>('contains')
   const [changes, setChanges] = useState<Record<number, Record<string, Cell>>>({})
   const [inserts, setInserts] = useState<Record<string, Cell>[]>([])
+  const [deletes, setDeletes] = useState<Set<number>>(new Set())
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set())
   // A restored SQL draft is shown without automatically executing or replacing it.
   const [queryMode, setQueryMode] = useState(() => !!tab.sql.trim())
@@ -91,6 +97,8 @@ export function TableBrowser({
   const [insertNulls, setInsertNulls] = useState<Set<string>>(new Set())
   const [editError, setEditError] = useState('')
   const [importOpen, setImportOpen] = useState(false)
+  const [fileImportOpen, setFileImportOpen] = useState(false)
+  const [diagramOpen, setDiagramOpen] = useState(false)
   const [exactCount, setExactCount] = useState<string | null>(null)
   const [countRequest, setCountRequest] = useState<string | null>(null)
   const operation = useRef<string | null>(null)
@@ -98,11 +106,12 @@ export function TableBrowser({
   const [applying, setApplying] = useState(false)
   const confirm = useConfirm()
   const demo = profile.id.startsWith('demo-')
-  const pending = Object.keys(changes).length + inserts.length
+  const pending = Object.keys(changes).length + inserts.length + deletes.size
   pendingRef.current = pending
   const set = runtime?.result?.sets[0]
   const uniqueColumns = !!set && new Set(set.columns.map((column) => column.name)).size === set.columns.length
   const editable =
+    engineSupports(profile.engine, 'rowEdits') &&
     !queryMode &&
     !profile.readOnly &&
     !demo &&
@@ -113,13 +122,21 @@ export function TableBrowser({
     connectionId: profile.id,
     database: tab.database,
     sessionId: tab.id,
-    schema: tab.schema || (profile.engine === 'postgres' ? profile.schema || 'public' : profile.database),
+    schema:
+      tab.schema ||
+      (profile.engine === 'postgres'
+        ? profile.schema || 'public'
+        : ['sqlite', 'duckdb'].includes(profile.engine)
+          ? 'main'
+          : profile.database),
     table: tab.table!,
     offset,
     limit: pageSize,
     direction: sort?.direction || 'asc',
     sort: sort?.column,
     filter,
+    filters: serverFilters,
+    sorts: serverSorts,
   }
   useEffect(() => {
     useApp.getState().setRuntime(tab.id, { pendingEdits: pending > 0, tableQueryMode: queryMode })
@@ -171,8 +188,12 @@ export function TableBrowser({
     operation.current = requestId
     useApp.getState().setRuntime(tab.id, { running: true, requestId, error: undefined })
     try {
-      const [result, metadata] = await Promise.allSettled([
-        api.table(requested),
+      // table() may read structure through the engine's same metadata session.
+      // Finish it before the independent display refresh; concurrent calls can
+      // otherwise reject with a busy metadata worker despite successfully loaded rows.
+      const [result] = await Promise.allSettled([api.table(requested)])
+      if (useApp.getState().runtime[tab.id]?.requestId !== requestId) return
+      const [metadata] = await Promise.allSettled([
         api.structure({
           connectionId: profile.id,
           database: tab.database,
@@ -183,7 +204,6 @@ export function TableBrowser({
       if (useApp.getState().runtime[tab.id]?.requestId !== requestId) return
       if (metadata.status === 'fulfilled') {
         setStructure(metadata.value)
-        setFilterColumn((c) => c || metadata.value.columns[0]?.name || '')
       }
       if (result.status === 'rejected') throw result.reason
       useApp.getState().setRuntime(tab.id, {
@@ -198,6 +218,8 @@ export function TableBrowser({
       setOffset(requested.offset)
       setSort(requested.sort ? { column: requested.sort, direction: requested.direction } : undefined)
       setFilter(requested.filter)
+      setServerFilters(requested.filters)
+      setServerSorts(requested.sorts)
       if (requested.limit !== useApp.getState().workspace.settings.pageSize)
         useApp.getState().setSettings({ pageSize: requested.limit })
       setQueryMode(false)
@@ -260,6 +282,23 @@ export function TableBrowser({
       ),
     [changes, set],
   )
+  const stagedChanges: EditsInput['changes'] = set
+    ? [
+        ...Object.entries(changes).map(([index, values]) => ({
+          kind: 'update' as const,
+          original: Object.fromEntries(
+            set.columns.map((column, i) => [column.name, set.rows[Number(index)][i]]),
+          ),
+          values,
+        })),
+        ...inserts.map((values) => ({ kind: 'insert' as const, values })),
+        ...[...deletes].map((index) => ({
+          kind: 'delete' as const,
+          original: Object.fromEntries(set.columns.map((column, i) => [column.name, set.rows[index][i]])),
+          values: {},
+        })),
+      ]
+    : []
   async function apply(deleteSelection?: number[]) {
     if (
       !set ||
@@ -293,14 +332,7 @@ export function TableBrowser({
           original: makeOriginal(index),
           values: {},
         }))
-      : [
-          ...Object.entries(changes).map(([i, values]) => ({
-            kind: 'update' as const,
-            original: makeOriginal(Number(i)),
-            values,
-          })),
-          ...inserts.map((values) => ({ kind: 'insert' as const, values })),
-        ]
+      : stagedChanges
     let approval: string | false
     try {
       approval = await confirm({
@@ -356,6 +388,7 @@ export function TableBrowser({
       if (useApp.getState().runtime[tab.id]?.requestId !== requestId) return
       setChanges({})
       setInserts([])
+      setDeletes(new Set())
       setSelectedRows(new Set())
       pendingRef.current = 0
       setExactCount(null)
@@ -392,7 +425,7 @@ export function TableBrowser({
     setCountRequest(requestId)
     setExactCount(null)
     useApp.getState().setRuntime(tab.id, { running: true, requestId, error: undefined })
-    const dialect = profile.engine === 'postgres' ? 'postgres' : 'mariadb'
+    const dialect = sqlDialect(profile.engine)
     try {
       const result = await api.query({
         connectionId: tab.connectionId,
@@ -432,6 +465,10 @@ export function TableBrowser({
     }
   }
   function beginEdit(row: number, column: number) {
+    if (deletes.has(row)) {
+      toast.info('Discard the staged deletion before editing this row.')
+      return
+    }
     if (operation.current || useApp.getState().runtime[tab.id]?.running || !displaySet?.rows[row]) return
     const value = displaySet.rows[row][column]
     const binary =
@@ -508,6 +545,27 @@ export function TableBrowser({
           Structure
         </button>
         <div className="toolbar-spacer" />
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={busy || demo || status !== 'connected' || !structure}
+          onClick={() => void guardNavigation(() => setFilterOpen(true))}
+        >
+          <Filter />
+          Server view
+        </Button>
+        {structure && set && !queryMode && (
+          <RelatedRecords
+            key={`${tab.id}:${profile.id}:${tab.database}:${tab.schema}:${tab.table}`}
+            profile={profile}
+            tab={tab}
+            structure={structure}
+            result={set}
+            selectedRow={selectedRows.size === 1 ? [...selectedRows][0] : undefined}
+            disabled={busy || pending > 0 || queryMode || demo}
+          />
+        )}
+        {profile.engine !== 'clickhouse' && <Button variant="ghost" size="sm" disabled={busy || demo || status !== 'connected'} onClick={() => setDiagramOpen(true)}>Schema diagram</Button>}
         {countRequest ? (
           <Button variant="outline" size="sm" onClick={() => void cancelCount()}>
             <CircleStop />
@@ -525,6 +583,20 @@ export function TableBrowser({
             Count rows
           </Button>
         )}
+        {structure &&
+          !profile.readOnly &&
+          !demo &&
+          ['postgres', 'mariadb', 'mysql', 'sqlite', 'duckdb', 'clickhouse', 'oracle'].includes(profile.engine) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={pending > 0 || busy || status !== 'connected' || runtime?.transaction !== 'idle'}
+              onClick={() => setFileImportOpen(true)}
+            >
+              <Upload />
+              Import file…
+            </Button>
+          )}
         {editable && structure && (
           <Button
             variant="ghost"
@@ -561,6 +633,22 @@ export function TableBrowser({
           <RefreshCw className={runtime?.running ? 'spin' : ''} />
           Refresh
         </Button>
+        {editable && (
+          <Button
+            variant="outline"
+            disabled={busy || selectedRows.size === 0 || pending + selectedRows.size > 200}
+            onClick={() => {
+              if ([...selectedRows].some((index) => changes[index])) {
+                toast.info('Discard updates to a selected row before staging its deletion.')
+                return
+              }
+              setDeletes((current) => new Set([...current, ...selectedRows]))
+              setSelectedRows(new Set())
+            }}
+          >
+            Stage selected deletes
+          </Button>
+        )}
       </div>
       {pending > 0 && (
         <div className="pending-bar">
@@ -575,6 +663,7 @@ export function TableBrowser({
             onClick={() => {
               setChanges({})
               setInserts([])
+              setDeletes(new Set())
             }}
           >
             <Undo2 />
@@ -585,6 +674,13 @@ export function TableBrowser({
             {applying ? 'Applying…' : 'Review & apply'}
           </Button>
         </div>
+      )}
+
+      {stagedChanges.length > 0 && (
+        <PendingChanges
+          changes={stagedChanges}
+          target={`${profile.name} / ${tab.database || profile.database} / ${input.schema}.${input.table} · ${profile.environment}`}
+        />
       )}
       {runtime?.error && <ErrorPanel message={runtime.error} />}
       {view === 'structure' ? (
@@ -666,30 +762,57 @@ export function TableBrowser({
                 ? undefined
                 : (column, direction) =>
                     void guardNavigation(() => {
-                      void load({ sort: column, direction, offset: 0 })
+                      void load({ sort: column, direction, sorts: undefined, offset: 0 })
                     })
             }
-            sort={sort}
+            sort={serverSorts?.[0] || sort}
             onServerFilter={
               demo || busy || status !== 'connected'
                 ? undefined
                 : () => void guardNavigation(() => setFilterOpen(true))
             }
           />
-          {filter && (
+          {(filter || serverFilters?.conditions.length || serverSorts?.length) && (
             <div className="hint-bar">
               <Filter />
-              {filter.column} {filter.operator} {filter.value}
+              <span>
+                Server view ·{' '}
+                {serverFilters?.conditions.length
+                  ? `${serverFilters.conditions.length} conditions (${serverFilters.match === 'all' ? 'AND' : 'OR'})`
+                  : filter
+                    ? `${filter.column} ${filter.operator} ${filter.value}`
+                    : 'No filters'}
+                {serverSorts?.length
+                  ? ` · sort ${serverSorts.map((item) => `${item.column} ${item.direction}`).join(', ')}`
+                  : ''}
+              </span>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() =>
                   void guardNavigation(() => {
-                    void load({ filter: undefined, offset: 0 })
+                    void load({ filter: undefined, filters: undefined, offset: 0 })
                   })
                 }
               >
                 Clear filter
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() =>
+                  void guardNavigation(() => {
+                    void load({
+                      filter: undefined,
+                      filters: undefined,
+                      sort: undefined,
+                      sorts: undefined,
+                      offset: 0,
+                    })
+                  })
+                }
+              >
+                Clear server view
               </Button>
             </div>
           )}
@@ -707,7 +830,7 @@ export function TableBrowser({
               </span>
             )}
             <span>{runtime?.result?.durationMs.toFixed(1)} ms</span>
-            {structure?.isHypertable && !sort && (
+            {structure?.isHypertable && !sort && !serverSorts?.length && (
               <span title="No automatic sort across the full history. Rows and offset pages may change order. Click a column header to sort; sorting large histories can be expensive.">
                 Unsorted preview · row order may change
               </span>
@@ -896,6 +1019,23 @@ export function TableBrowser({
           </div>
         </DialogContent>
       </Dialog>
+      {diagramOpen && <SchemaDiagram profile={profile} database={tab.database} initialSchema={input.schema} initialTable={tab.table!} onClose={() => setDiagramOpen(false)} />}
+      {fileImportOpen && structure && (
+        <ImportWizard
+          profile={profile}
+          tab={tab}
+          structure={structure}
+          onClose={() => setFileImportOpen(false)}
+          onBusyChange={(running) => {
+            operation.current = running ? 'file-import' : null
+            useApp.getState().setRuntime(tab.id, { running })
+          }}
+          onImported={() => {
+            setExactCount(null)
+            void load()
+          }}
+        />
+      )}
       {importOpen && structure && (
         <CsvImportDialog
           tab={tab}
@@ -912,64 +1052,22 @@ export function TableBrowser({
           }}
         />
       )}
-      <Dialog open={filterOpen} onOpenChange={setFilterOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Filter table on server</DialogTitle>
-            <DialogDescription>
-              Filter values are parameterized. Only the matching page is fetched.
-            </DialogDescription>
-          </DialogHeader>
-          <FieldGroup>
-            <Field>
-              <FieldLabel>Column</FieldLabel>
-              <select
-                aria-label="Filter column"
-                value={filterColumn}
-                onChange={(e) => setFilterColumn(e.target.value)}
-              >
-                {structure?.columns.map((c) => (
-                  <option key={c.name}>{c.name}</option>
-                ))}
-              </select>
-            </Field>
-            <Field>
-              <FieldLabel>Condition</FieldLabel>
-              <select
-                aria-label="Filter condition"
-                value={filterOperator}
-                onChange={(e) => setFilterOperator(e.target.value as typeof filterOperator)}
-              >
-                <option value="contains">contains</option>
-                <option value="equals">equals</option>
-                <option value="is null">is NULL</option>
-              </select>
-            </Field>
-            {filterOperator !== 'is null' && (
-              <Field>
-                <FieldLabel>Value</FieldLabel>
-                <Input
-                  aria-label="Filter value"
-                  value={filterValue}
-                  onChange={(e) => setFilterValue(e.target.value)}
-                />
-              </Field>
-            )}
-          </FieldGroup>
-          <div className="dialog-actions">
-            <Button
-              onClick={() => {
-                const next = { column: filterColumn, operator: filterOperator, value: filterValue }
-                void load({ filter: next, offset: 0 })
-                setFilterOpen(false)
-              }}
-            >
-              <Filter />
-              Apply filter
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {filterOpen && structure && (
+        <ServerTableViewControls
+          structure={structure}
+          filters={serverFilters}
+          sorts={serverSorts}
+          filter={filter}
+          sort={sort}
+          onClose={() => setFilterOpen(false)}
+          onApply={(view) => {
+            void guardNavigation(() => {
+              setFilterOpen(false)
+              void load({ ...view, filter: undefined, sort: undefined, offset: 0 })
+            })
+          }}
+        />
+      )}
     </div>
   )
   return (

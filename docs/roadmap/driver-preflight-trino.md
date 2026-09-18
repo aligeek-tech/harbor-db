@@ -1,0 +1,29 @@
+# Trino adapter preflight and current evidence
+
+Checked 2026-09-18. DB12 uses the native direct HTTP v1 statement protocol, independently of PostgreSQL. Official references: [client protocol](https://trino.io/docs/current/develop/client-protocol.html), [container setup](https://trino.io/docs/current/installation/containers.html), [password authentication](https://trino.io/docs/current/security/password-file.html), [TLS](https://trino.io/docs/current/security/tls.html), [access-control permissions](https://trino.io/docs/current/security/file-system-access-control.html), [memory connector](https://trino.io/docs/current/connector/memory.html).
+
+The official Apache-2.0 `@trinodb/trino-js-client` 0.3.2 client was evaluated from its package manifest and source. Its current Axios path uses ordinary JSON numbers and its public request shape does not provide Harbor's exact-number, bounded-response and fixed-continuation-authority guarantees. The first-party `TrinoHttp` implementation therefore uses the documented protocol, existing locked `lossless-json` 4.3.1, and Node HTTP/TLS. No native module or new dependency was added. Redistribution of Trino itself is not part of the desktop application.
+
+## Implemented workflow and limits
+
+Explicit coordinator/session user, optional password or bearer authentication, catalog/schema selection, catalog/table/column inspection, native SHOW CREATE where permitted, SQL and table filtering/paging, direct result streaming, query ID/state/pages/processed exact counts, request-scoped DELETE cancellation. Every write requires the exact profile name. Read-only classified operations run in a native read-only transaction that is rolled back on completion/cancel; this does not replace restricted connector credentials or guarantee that remote functions cannot have effects.
+
+No interactive transactions, prepared statements, session changes, row editing, parameter binding, OAuth browser login, Kerberos, automatic token refresh, spooling or object-storage fetch is advertised. A connector's write atomicity and authorization are its own. No connection or query retry is performed; unknown writes are never replayed. TLS password/token authentication requires certificate and hostname verification. SSH uses the existing pinned-host transport. Continuations must retain the selected coordinator origin and a v1 statement path; forwarded endpoints require correct proxy configuration. Cursor paths with credentials, query strings, fragments or unexpected routes are rejected before forwarding credentials.
+
+Bounds: 1 MiB SQL, 8 MiB per direct HTTP response, 8 MiB/selected-row cap for loaded results, 2,000 columns, 5,000 catalog objects, four active operations per profile and 50 recent progress records. Full export awaits the existing backpressure sink. Decimal/bigint text, native temporal strings, canonical nested JSON, ordered duplicate columns and tagged binary are preserved. Catalog privilege failures remain visible; they are not represented as empty metadata.
+
+## Disposable native fixture
+
+Trino 483 official ARM64 image: `trinodb/trino:483@sha256:db58cc93e593a2706553745f276bb119c9810e69918be56ecde088ba7ccb0534`. Child ARM64 digest `sha256:aa18e61b2e7776ab8641ba8baaa8687d0430894e88c639e61010cc46a994ab36`. Container `harbor-roadmap-trino-y6pr0dek`, localhost TLS 18443, 2 CPU/2 GiB, tmpfs data, no restart policy. Memory/TPCH catalogs, synthetic exact-value tables only. Private external fixture directory under the onboarding task temp root contains a three-day disposable certificate, bcrypt authentication file, access rules and generated credentials. No secrets are stored here. Reader/writer/denied users have separate native catalog permissions; even the native read-only reader is denied SHOW CREATE, which Harbor reports while retaining permitted column inspection.
+
+`HARBOR_TRINO_FIXTURE` points to the private generated credentials JSON only during tests; test code reads sibling CA. Reproduction on another host requires starting this documented native TLS/password/access-control configuration with fresh credentials, setting that variable, and running `npm test -- tests/trino.integration.test.ts`. The fixture secret file contains `password` and `port`; its users are `harbor_writer`, `harbor_reader` and `harbor_denied`. No user database credentials are used.
+
+## Verification
+
+- `implementation-trino-native-first`: 6/7 pass; SHOW CREATE assertion incorrectly assumed reader permission. Native access-control behavior was investigated; UI now includes the safe native error code, and tests cover restricted versus writer metadata independently.
+- `implementation-trino-native-corrected`: 7/7 pass, exit 0. Catalogs, schema/table metadata, exact decimal(38,18), bigint, binary/null/empty/timestamp(12) with zone, duplicate names, real 2,500-row export, display cap cancellation, write review, native read-only account rejection, wrong credentials/CA/hostname, table filters, request-scoped cancel and reuse.
+- `implementation-trino-cancel-user-query`: 1/1 selected native test passes, six intentionally filtered. Internal setup transaction IDs are excluded from user-query progress, so this check waits for the actual submitted work and asserts coordinator cancellation acknowledgement.
+- `implementation-trino-protocol`: 7/7 pass, exit 0. These local protocol tests validate hostile cursor/redirect rejection, no replay after socket loss, response cap, compression/spooling refusal, exact nested values and redacted errors. They are not engine compatibility evidence.
+- `implementation-trino-renderer-build`: typecheck and application build pass, exit 0. Actual desktop and packaging verification are still pending; other server versions, external connectors, SSH deployment and bearer-auth servers are unverified.
+
+No claim of Trino-wide connector support, production readiness or alternate-platform desktop compatibility follows from this fixture.

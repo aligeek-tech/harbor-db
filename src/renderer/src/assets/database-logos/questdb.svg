@@ -1,0 +1,30 @@
+<svg width="15" height="13" viewBox="0 0 14.6667 12.6617" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <g clip-path="url(#questdb-q-clip)">
+    <path d="M2.40885 6.32521C2.40885 4.1324 4.21249 2.36597 6.45148 2.36597C7.26001 2.36597 8.00633 2.58931 8.62827 2.99539L10.3697 1.31016C9.29169 0.498009 7.92341 0.010717 6.45148 0.010717C2.88568 0.010717 0.00400391 2.83295 0.00400391 6.32521C0.00400391 9.81747 2.88568 12.6397 6.45148 12.6397V10.2845C4.21249 10.2845 2.40885 8.51802 2.40885 6.32521Z" fill="url(#questdb-q-paint0)"/>
+    <path d="M10.4937 6.32536H12.8985C12.8985 4.66044 12.2351 3.13766 11.1571 2.00065L9.45713 3.66555C10.0998 4.3762 10.4937 5.31017 10.4937 6.32536Z" fill="url(#questdb-q-paint1)"/>
+    <path d="M8.42066 6.52812H4.87559L11.1365 12.6599L14.6608 12.6396L8.42066 6.52812Z" fill="url(#questdb-q-paint2)"/>
+    <path opacity="0.6" d="M0.854212 3.17823C-0.700644 7.60447 3.9432 9.45211 3.9432 9.45211C3.44563 9.08665 2.82369 8.23389 2.63712 7.62477C2.24322 6.36593 2.36761 5.37104 3.01027 4.27463" fill="url(#questdb-q-paint3)"/>
+  </g>
+  <defs>
+    <linearGradient id="questdb-q-paint0" x1="14.5161" y1="12.68" x2="3.2289" y2="0.989707" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#892C6C"/>
+      <stop offset="1" stop-color="#D14671"/>
+    </linearGradient>
+    <linearGradient id="questdb-q-paint1" x1="2.59499" y1="0.759477" x2="14.2853" y2="12.5073" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#C34170"/>
+      <stop offset="1" stop-color="#8B2C6C"/>
+    </linearGradient>
+    <linearGradient id="questdb-q-paint2" x1="13.9975" y1="12.3919" x2="2.07685" y2="0.759239" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#882B6B"/>
+      <stop offset="1" stop-color="#CF4671"/>
+    </linearGradient>
+    <linearGradient id="questdb-q-paint3" x1="1.5518" y1="8.60173" x2="3.17796" y2="3.99125" gradientUnits="userSpaceOnUse">
+      <stop stop-color="white" stop-opacity="0.38"/>
+      <stop offset="0.8598" stop-color="white" stop-opacity="0.01"/>
+      <stop offset="1" stop-color="white" stop-opacity="0"/>
+    </linearGradient>
+    <clipPath id="questdb-q-clip">
+      <rect width="14.6667" height="12.6617" fill="white"/>
+    </clipPath>
+  </defs>
+</svg>

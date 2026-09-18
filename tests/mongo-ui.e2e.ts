@@ -1,3 +1,4 @@
+import { selectDatabaseEngine } from './electron-runtime'
 import { _electron, expect, test } from '@playwright/test'
 import { randomUUID } from 'node:crypto'
 import { mkdir, mkdtemp, rm } from 'node:fs/promises'
@@ -177,7 +178,7 @@ test('MongoDB browser sorts, queries, saves drafts and reviews document writes',
     await page.screenshot({ path: '/tmp/harbor-db-e2e/mongodb-light-compact.png' })
     await page.getByRole('button', { name: 'New connection', exact: true }).click()
     const connection = page.getByRole('dialog', { name: 'New connection', exact: true })
-    await connection.getByRole('radio', { name: 'MongoDB', exact: true }).click()
+    await selectDatabaseEngine(connection, 'MongoDB')
     await connection.getByText('Use a connection URL', { exact: true }).click()
     await connection
       .getByLabel('Connection URL', { exact: true })
