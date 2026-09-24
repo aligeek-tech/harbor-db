@@ -8,10 +8,10 @@ Owner authorized single-task continuation and publication at a verified release 
 - [x] Repair automation startup cancellation, timezone drift and log privacy with tests.
 - [x] Repair existing Linux CI diagnostic capability and DuckDB file identity failures.
 - [x] Reconcile reviewed completed checkpoints and document remaining preview/blocked scope.
-- [ ] Linux x64/ARM64 AppImage, DEB, RPM and portable archive packaging; explicit distro requirements and limitations.
+- [x] Linux x64/ARM64 AppImage, DEB, RPM and portable archive packaging; explicit distro requirements and limitations.
 - [x] Local lint/type/build/unit and meaningful desktop/package verification.
-- [ ] Native-platform CI passes before publication; all promised installers accounted for.
-- [ ] Patch version/download/release docs updated, commit/push/tag through existing workflow, public asset checksums independently verified.
+- [x] Native-platform CI passes before publication; all promised installers accounted for.
+- [x] Patch version/download/release docs updated, commit/push/tag through existing workflow, public asset checksums independently verified.
 
 Earlier disposable runtime/log directory was removed by the system. Node24.19.0 is available in the Codex bundled runtime; recreating external locked npm11.19 tooling. Prior evidence is historical and worker files remain available. No licenses newly accepted; no cloud data transfer authorized by publication.
 
@@ -59,3 +59,32 @@ Release35979935766 at f362c8f/v0.1.9: **all five native installer jobs passed**,
 The performance fixture now uses browser bulk text input through Monaco's normal input event path; all other typing regressions retain individual keyboard events. Existing full persisted-SQL equality,5s catalog,8s query,250ms event-loop and1s settings thresholds remain unchanged. No model/workspace injection, retry or weaker threshold. Corrected candidate is **0.1.10**; v0.1.8/v0.1.9 tags are preserved, neither was published. Job-specific logs had a DNS/network failure; the standard GitHub run-log archive endpoint succeeded, without changing DNS/global settings or bypassing access controls.
 
 Local unchanged-threshold performance rerun after bulk fixture entry: **PASS1/1**, catalog188ms, query133ms, maximum measured event-loop delay122ms, exit0,4.23s. CI now emits GitHub test annotations alongside the ordinary list reporter for direct diagnosis if artifact log routing is unavailable.
+
+## Published candidate and platform verification
+
+**v0.1.10** at **346fe241a7c4c6c94b870a84d8d2235f252dd5a3** was published September24,2026 at09:42:21UTC. [Release workflow35981461078](https://github.com/aligeek-tech/harbor-db/actions/runs/35981461078) and [branch CI35981443428](https://github.com/aligeek-tech/harbor-db/actions/runs/35981443428) both succeeded. Publication required all13installers plusSHA256SUMS; no failed gate was bypassed. v0.1.8 was cancelled and v0.1.9 failed before publication; both tags remain immutable and unpublished.
+
+| Final release gate | Result |
+| --- | --- |
+| Clean locked install, full dependency audit, lint, TypeScript and build | PASS; audit0findings |
+| Default unit gate |465passed,336explicit skips;64passed/54skipped files |
+| Enabled real-engine integration gate |697passed,225explicit skips;83passed/35skipped files |
+| Linux desktop acceptance |52passed,22explicit skips,5.4minutes |
+| Linux packaged remote/local-driver acceptance |1/1passed,5.1s |
+| Ubuntu24.04 x64,4Linux formats and actual packaged smoke |PASS; native smoke1/1,4.0s |
+| Ubuntu24.04 ARM64,4Linux formats and actual packaged smoke |PASS; native smoke1/1,2.7s |
+| macOS15 Intel,DMG+ZIP and actual packaged smoke |PASS; native smoke1/1,12.9s |
+| macOS15 Apple Silicon,DMG+ZIP and actual packaged smoke |PASS; native smoke1/1,5.1s |
+| Windows2025 x64,NSIS and actual packaged smoke |PASS; native smoke1/1,3.8s |
+
+Release-run performance: catalog547ms, query69ms, maximum measured renderer event-loop delay50.8ms,4timer ticks. Thresholds were unchanged. Native package smoke exercises SQLite/DuckDB,ASAR,sandbox,diagnostics and reload on every platform; the separate Linux package gate exercises five real network drivers. This does not certify every adapter,distribution,serverversion,OSkeyring or desktop environment. Windows remains unsigned; macOS ad-hoc signed without notarization. No Alpine/musl,32bit,ARMv7,RISC-V,WindowsARM,Flatpak/Snap/AUR publication claim.
+
+Temporary fixture containers and test apps are stopped. Existing user work/services were preserved. The working tree was clean at the tagged candidate; final documentation-only evidence will be recorded without moving that tag. For local development use Node24 and `npm ci && npm run dev` from the repository root; installer users do not need Node. The scoped external npm runtime and logs remain in W for this session, but are not promised permanent storage.
+
+## Final public asset verification and handoff
+
+Release: https://github.com/aligeek-tech/harbor-db/releases/tag/v0.1.10 . All13installer URLs were tested **without authentication** using `curl --fail --location --head`; each returnedHTTP200. The anonymously downloaded SHA256SUMS matches GitHub's independently recorded `sha256:` digest for **every installer**, with an exact13file set. Two additional complete local streamed downloads (Linuxaarch64RPM,120429473bytes; Linuxamd64DEB,150517932bytes) matched the same hashes. The remaining optional full-body transfers were intentionally stopped after the complete13asset metadata/public-access verification; they are **not** claimed as complete local rehashes. There is no13/13full-download claim.
+
+Evidence: W/v0.1.10-public-metadata-verification.json, W/v0.1.10-SHA256SUMS, W/v0.1.10-complete-body-samples.json and the two successful public GitHub workflow runs above. The full run-log archive API succeeded; failed direct job-log access is not needed for the recorded results. All task-owned download processes are now stopped.
+
+Handoff: released source346fe241a7c4c6c94b870a84d8d2235f252dd5a3; package0.1.10; main includes a subsequent documentation-only evidence commit, with no retagging or installer replacement. Important paths: src/main/engines/vector.ts,vector-http.ts,duckdb-worker.ts; src/main/persistence/automation.ts,transfers.ts,transfer-imports.ts; tests/editor-input.ts,ux12-ui.e2e.ts,package-local.e2e.ts; .github/workflows/{ci,release}.yml; docs/CAPABILITIES.md and roadmap/BACKLOG.md. All78ticket cards remain present; unchecked acceptance is not changed into completion by this release. No new worker task or agent was created. Next work must preserve exact values, validatedIPC, explicit targets, conflict/write guards and opt-in data transfer; Scylla/Couchbase/Cosmos/Firestore outside copies remain unintegrated. No fixture/app/download process is intentionally left running, and no future automation was created.

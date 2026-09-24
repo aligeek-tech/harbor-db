@@ -1,6 +1,6 @@
 # Capabilities and limits
 
-This document describes the **0.1.10 release candidate** built from the integrated roadmap checkpoint. Publication and final artifact verification are recorded separately in VALIDATION.md. Ticket acceptance and current evidence remain in [the roadmap backlog](roadmap/BACKLOG.md), [progress](roadmap/PROGRESS.md), and [verification evidence](roadmap/EVIDENCE.md). Adapter presence, a passing handshake, and a package build are distinct from full compatibility acceptance.
+This document describes the **0.1.10 release** built from the integrated roadmap checkpoint. Publication and final artifact verification are recorded separately in VALIDATION.md. Ticket acceptance and current evidence remain in [the roadmap backlog](roadmap/BACKLOG.md), [progress](roadmap/PROGRESS.md), and [verification evidence](roadmap/EVIDENCE.md). Adapter presence, a passing handshake, and a package build are distinct from full compatibility acceptance.
 
 ## Observed engine support
 

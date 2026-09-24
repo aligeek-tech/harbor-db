@@ -1,8 +1,10 @@
 # Validation record
 
-## September24, 2026 release continuation
+## September24, 2026 — published v0.1.10
 
-Current 0.1.10 candidate evidence and explicit release gates are in [RELEASE-CHECKPOINT.md](roadmap/RELEASE-CHECKPOINT.md). The earlier records below retain their original version/date; they do not certify newly integrated engines or platforms.
+Published 0.1.10 evidence, native platform gates, test counts and explicit limitations are in [RELEASE-CHECKPOINT.md](roadmap/RELEASE-CHECKPOINT.md). Release workflow35981461078 and branch CI35981443428 passed at346fe241a7c4c6c94b870a84d8d2235f252dd5a3. All13public installer URLs returnedHTTP200; GitHub asset digests matchSHA256SUMS. Two full local downloads were additionally rehashed; the other11 are not claimed as full local rehashes.
+
+The earlier records below retain their original version/date; they do not certify newly integrated engines or platforms.
 
 Runtime validation date: 2026-09-14. Public v0.1.1 downloads verified on 2026-09-15. These results describe the local host, generated fixtures and GitHub release jobs below. They do not establish behavior on every operating-system version, server version or network condition.
 
