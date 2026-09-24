@@ -43,6 +43,7 @@ export class AutomationService {
   ) {}
 
   start(): void {
+    if (this.timer) clearInterval(this.timer)
     const now = new Date(this.now())
     for (const task of this.repository.automations()) {
       if (
@@ -86,7 +87,11 @@ export class AutomationService {
         })
       }
     }
-    this.timer = setInterval(() => void this.tick(), 30_000)
+    this.timer = setInterval(() => { void this.tick().catch(() => {
+      // A persistence failure must not cause repeated unattended submissions.
+      if (this.timer) clearInterval(this.timer)
+      this.timer = undefined
+    }) }, 30_000)
     this.timer.unref()
   }
 
@@ -143,6 +148,8 @@ export class AutomationService {
     const task = this.repository.automations().find((item) => item.id === taskId)
     if (!task) throw new Error('This reusable task no longer exists.')
     if (this.running) throw new Error('One reusable task is already running. Wait or cancel it first.')
+    const drift = this.disableDriftedSchedule(task, trigger)
+    if (drift) return Promise.resolve(drift)
     if (trigger === 'schedule' && !task.enabled) throw new Error('This reusable task is disabled.')
     if (task.target.kind === 'import' && !reviewedImport) {
       const at = new Date(this.now()).toISOString()
@@ -190,9 +197,9 @@ export class AutomationService {
         throw new Error('The reusable task exceeded its configured row or byte limit.')
       Object.assign(run, {
         state: 'completed', code: 'completed', finishedAt: new Date(this.now()).toISOString(),
-        rows: outcome.rows, bytes: outcome.bytes, message: outcome.message,
+        rows: outcome.rows, bytes: outcome.bytes, message: 'Reusable task completed. Only bounded counts are retained in this log.',
       })
-    } catch (error) {
+    } catch {
       const limited = controller.signal.reason === 'resource-limit'
       Object.assign(run, {
         state: controller.signal.aborted && !limited ? 'cancelled' : 'failed',
@@ -200,7 +207,7 @@ export class AutomationService {
         finishedAt: new Date(this.now()).toISOString(),
         message: limited
           ? 'The reusable task reached its configured duration limit and was cancelled. Inspect partial or uncertain outcomes before retrying.'
-          : safeMessage(error),
+          : '[redacted] Reusable task failed or was cancelled. Provider details and data are omitted. Inspect the destination and any partial or uncertain outcomes before retrying.',
       })
     } finally {
       clearTimeout(timer)
@@ -214,9 +221,20 @@ export class AutomationService {
     return automationRunSchema.parse(run)
   }
 
+  private disableDriftedSchedule(task: AutomationDefinition, trigger: AutomationRun['trigger']): AutomationRun | undefined {
+    if (task.schedule.kind !== 'daily' || task.schedule.timeZone === automationHostTimeZone()) return
+    const at = new Date(this.now()).toISOString()
+    // Disable before persisting the log: a logging failure must not leave this eligible to run.
+    this.repository.saveAutomation({...task,enabled:false,nextRunAt:undefined,updatedAt:at})
+    const run: AutomationRun = {id:randomUUID(),taskId:task.id,state:'failed',code:'schedule-zone-mismatch',trigger,startedAt:at,finishedAt:at,message:'The desktop time zone changed. Schedule disabled; review and save it again. No new work was submitted.'}
+    this.repository.saveAutomationRun(run)
+    return run
+  }
+
   private advance(taskId: string): void {
     const task = this.repository.automations().find((item) => item.id === taskId)
     if (task?.enabled && task.schedule.kind === 'daily') {
+      if(this.disableDriftedSchedule(task, 'schedule')) return
       const now = new Date(this.now())
       this.repository.saveAutomation({
         ...task,
@@ -225,13 +243,4 @@ export class AutomationService {
       })
     }
   }
-}
-
-function safeMessage(error: unknown): string {
-  const message = error instanceof Error ? error.message : 'Reusable task failed.'
-  return message
-    .replace(/([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi, '$1[redacted]@')
-    .replace(/\b(password|passwd|passphrase|authorization|token|secret)\s*[=:]\s*[^\s,;]+/gi, '$1=[redacted]')
-    .replace(/\/(?:Users|home|tmp|private\/tmp|var\/folders)\/[^\s"']+/g, '[redacted-path]')
-    .slice(0, 2000)
 }

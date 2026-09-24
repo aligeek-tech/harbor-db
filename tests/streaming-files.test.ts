@@ -209,4 +209,17 @@ describe('streaming export file safety', () => {
     },
     20000,
   )
+  it('does not submit an export cancelled while its output file is opening', async () => {
+    const directory=await mkdtemp(join(tmpdir(),'harbor-export-parent-'))
+    let queried=false
+    const service=new TransferService({streamQuery:async()=>{queried=true}})
+    const parent=new AbortController()
+    try {
+      const started=service.startExport(input,join(directory,'out.jsonl'),{maxRows:1,maxBytes:4096,signal:parent.signal})
+      parent.abort()
+      await expect(started).rejects.toThrow('before export started')
+      expect(queried).toBe(false)
+    } finally {await service.closeAll();await rm(directory,{recursive:true,force:true})}
+  })
+
 })

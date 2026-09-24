@@ -10,7 +10,7 @@ const root = realpathSync(resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const require = createRequire(import.meta.url)
 
 export function sandboxPolicy(projectRoot, electronBinary) {
-  const paths = [electronBinary, join(projectRoot, 'release/linux-unpacked/harbor-db')]
+  const paths = [electronBinary, join(projectRoot, process.arch === 'arm64' ? 'release/linux-arm64-unpacked/harbor-db' : 'release/linux-unpacked/harbor-db')]
   for (const path of paths) {
     // Reject AppArmor pattern syntax: these grants must match exactly two executables.
     if (/[\x00-\x1f"\\*?{}\[\]^]/.test(path))

@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { parse } from 'lossless-json'
+import { useEffect, useRef, useState } from 'react'
 import { CircleStop, Database, RefreshCw, Search, ShieldAlert } from 'lucide-react'
 import type { ConnectionProfile, WorkspaceTab } from '@shared/contracts'
 import { vectorConfirmation, type VectorCollection, type VectorSearchResult } from '@shared/vector'
@@ -21,6 +22,8 @@ export function VectorBrowser({ profile, tab }: { profile: ConnectionProfile; ta
   const [mutationId, setMutationId] = useState('')
   const [payload, setPayload] = useState('{}')
   const [confirm, setConfirm] = useState('')
+  const mutationInFlight = useRef(false)
+  const [mutating, setMutating] = useState(false)
 
   async function refresh() {
     setError('')
@@ -36,21 +39,28 @@ export function VectorBrowser({ profile, tab }: { profile: ConnectionProfile; ta
     const id = uid(); setRequestId(id); setError(''); setResult(undefined)
     try {
       const parsedVector = JSON.parse(vector) as unknown
-      const parsedFilter = JSON.parse(filter) as unknown
+      const parsedFilter = parse(filter) as unknown
       if (!Array.isArray(parsedVector) || !parsedFilter || typeof parsedFilter !== 'object' || Array.isArray(parsedFilter)) throw new Error('Enter a JSON vector array and JSON filter object.')
-      setResult(await api.vectorSearch({ connectionId: profile.id, collection, ...(namespace ? { namespace } : {}), requestId: id, vector: parsedVector as number[], filter: parsedFilter as Record<string, unknown>, limit: 50, includeVectors }))
+      setResult(await api.vectorSearch({ connectionId: profile.id, collection, ...(namespace ? { namespace } : {}), requestId: id, vector: parsedVector as number[], filterJson: filter, limit: 50, includeVectors }))
     } catch (cause) { setError(errorText(cause)) } finally { setRequestId('') }
   }
 
   async function mutate(action: 'upsert' | 'delete') {
+    if (mutationInFlight.current) return
+    mutationInFlight.current = true
+    setMutating(true)
     setError('')
     try {
-      const id = /^\d+$/.test(mutationId) ? Number(mutationId) : mutationId
+      const id = mutationId
       const common = { connectionId: profile.id, collection, ...(namespace ? { namespace } : {}), id, confirm }
       if (action === 'delete') await api.vectorMutate({ ...common, action })
-      else await api.vectorMutate({ ...common, action, vector: JSON.parse(vector), payload: JSON.parse(payload) })
+      else await api.vectorMutate({ ...common, action, vector: JSON.parse(vector), payload: {}, payloadJson: payload })
       setConfirm(''); setMutationId(''); await refresh()
-    } catch (cause) { setError(errorText(cause)) }
+    } catch (cause) { setError(errorText(cause)) } finally {
+      mutationInFlight.current = false
+      setMutating(false)
+      setConfirm('')
+    }
   }
 
   const target = vectorConfirmation({ connectionId: profile.id, collection, namespace })
@@ -66,7 +76,7 @@ export function VectorBrowser({ profile, tab }: { profile: ConnectionProfile; ta
     <div className="flex gap-2">{requestId ? <Button variant="destructive" onClick={() => void api.vectorCancel({ connectionId: profile.id, requestId })}><CircleStop /> Cancel</Button> : <Button disabled={!collection} onClick={() => void search()}><Search /> Bounded search</Button>}</div>
     {error && <ErrorPanel message={error} />}
     {result && <div className="space-y-2"><p>{result.hits.length} hits · {result.durationMs} ms{result.truncated ? ' · limit reached' : ''}</p>{result.warnings.map((warning) => <p className="text-xs" key={warning}>{warning}</p>)}<pre className="max-h-80 overflow-auto rounded border p-3 text-xs">{JSON.stringify(result.hits, null, 2)}</pre></div>}
-    <details className="rounded border p-3"><summary className="cursor-pointer"><ShieldAlert className="inline" /> Reviewed point mutation</summary><p className="text-xs">No conflict token is available across all four providers. Use guarded browsing and least-privilege credentials; refresh after the acknowledged mutation.</p><div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2"><label>Point/object ID<Input value={mutationId} onChange={(event) => setMutationId(event.target.value)} /></label><label>Payload/metadata JSON<textarea rows={3} value={payload} onChange={(event) => setPayload(event.target.value)} /></label><label className="sm:col-span-2">Type exact target: <code>{target}</code><Input value={confirm} onChange={(event) => setConfirm(event.target.value)} /></label></div><div className="mt-2 flex gap-2"><Button disabled={profile.readOnly || confirm !== target || !mutationId} onClick={() => void mutate('upsert')}>Upsert one point</Button><Button variant="destructive" disabled={profile.readOnly || confirm !== target || !mutationId} onClick={() => void mutate('delete')}>Delete one point</Button></div></details>
+    <details className="rounded border p-3"><summary className="cursor-pointer"><ShieldAlert className="inline" /> Reviewed point mutation</summary><p className="text-xs">No conflict token is available across all four providers. Use guarded browsing and least-privilege credentials; refresh after the acknowledged mutation.</p><div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2"><label>Point/object ID<Input value={mutationId} onChange={(event) => setMutationId(event.target.value)} /></label><label>Payload/metadata JSON<textarea rows={3} value={payload} onChange={(event) => setPayload(event.target.value)} /></label><label className="sm:col-span-2">Type exact target: <code>{target}</code><Input value={confirm} onChange={(event) => setConfirm(event.target.value)} /></label></div><div className="mt-2 flex gap-2"><Button disabled={mutating || profile.readOnly || confirm !== target || !mutationId} onClick={() => void mutate('upsert')}>Upsert one point</Button><Button variant="destructive" disabled={mutating || profile.readOnly || confirm !== target || !mutationId} onClick={() => void mutate('delete')}>Delete one point</Button></div></details>
     <div className="grid gap-2 sm:grid-cols-2">{collections.map((item) => <div className="rounded border p-2 text-sm" key={item.name}><strong>{item.name}</strong><p>{item.dimension ? `${item.dimension} dimensions` : 'dimension not reported'} · {item.metric || 'metric not reported'} · {item.records ?? 'unknown'} records</p><pre className="overflow-auto text-xs">{JSON.stringify(item.details, null, 2)}</pre></div>)}</div>
   </div>
 }

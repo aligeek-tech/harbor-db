@@ -1,7 +1,7 @@
 {
   "name": "harbor-db",
-  "version": "0.1.7",
-  "description": "A local desktop workspace for PostgreSQL, MariaDB, MongoDB, and Redis",
+  "version": "0.1.8",
+  "description": "A local desktop database workbench with SQL, document, key-value, graph and vector workflows",
   "homepage": "https://github.com/aligeek-tech/harbor-db",
   "repository": {
     "type": "git",

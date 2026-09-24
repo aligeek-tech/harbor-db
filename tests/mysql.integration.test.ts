@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
 import mariadb, { type Connection } from 'mariadb'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -11,6 +12,8 @@ import type { QueryParameter } from '../src/shared/parameters'
 
 // Opt in separately: compose.mysql.yaml is an isolated, disposable MySQL 8.4 fixture.
 const integration = process.env.HARBOR_MYSQL === '1'
+const caPath = process.env.HARBOR_MYSQL_TLS_CA
+const tls = caPath ? { enabled: true, rejectUnauthorized: true, ca: readFileSync(caPath, 'utf8') } : undefined
 const profile = profileSchema.parse({
   id: 'mysql-integration',
   name: 'Local MySQL verification',
@@ -21,6 +24,7 @@ const profile = profileSchema.parse({
   database: 'harbor',
   readOnly: false,
   queryTimeout: 15000,
+  tls,
 })
 const secrets = { password: 'harbor_test' }
 const service = new SqlService()
@@ -71,6 +75,7 @@ describe.skipIf(!integration)('real MySQL 8.4 integration', () => {
       password: secrets.password,
       database: 'harbor',
       queryTimeout: 0,
+      ssl: tls ? { ca: tls.ca, rejectUnauthorized: true } : false,
     })
     expect(control.serverVersion()).toMatch(/^8\.4\./)
     const state = await service.connect(profile, secrets)

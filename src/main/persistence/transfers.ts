@@ -23,6 +23,7 @@ export interface ExportJobSnapshot {
 export interface ExportHardLimits {
   maxRows: number
   maxBytes: number
+  signal?: AbortSignal
 }
 interface ExportJob {
   connectionId: string
@@ -58,6 +59,7 @@ export class TransferService {
     outputPath: string,
     limits?: ExportHardLimits,
   ): Promise<ExportJobSnapshot> {
+    if (limits?.signal?.aborted) throw new Error('Export was cancelled before it started.')
     if (this.closed) throw new Error('The transfer service is closing.')
     if (this.starting + [...this.jobs.values()].filter((job) => job.snapshot.state === 'running').length >= 2)
       throw new Error('Two transfers are already running. Wait or cancel one before starting another.')
@@ -92,7 +94,7 @@ export class TransferService {
     const id = crypto.randomUUID()
     const partialPath = `${path}.harbor-${id}.partial`
     const file = await open(partialPath, 'wx', 0o600)
-    if (this.closed || (this.generations.get(input.connectionId) ?? 0) !== generation) {
+    if (limits?.signal?.aborted || this.closed || (this.generations.get(input.connectionId) ?? 0) !== generation) {
       await file.close()
       await unlink(partialPath)
       throw new Error('The connection target changed or the transfer service closed before export started.')
@@ -117,8 +119,11 @@ export class TransferService {
       done: Promise.resolve(),
       finalizing: false,
     }
+    const cancel = () => { if (!job.finalizing) job.controller.abort(limits?.signal?.reason) }
+    limits?.signal?.addEventListener('abort', cancel, { once: true })
+    if (limits?.signal?.aborted) cancel()
     this.jobs.set(id, job)
-    job.done = this.run(job, input, path, partialPath, file, limits)
+    job.done = this.run(job, input, path, partialPath, file, limits).finally(() => limits?.signal?.removeEventListener('abort', cancel))
     return this.getJob(id)
   }
 

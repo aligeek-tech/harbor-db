@@ -31,7 +31,15 @@ describe.skipIf(!qdrantPort)('Qdrant live REST contract', () => {
     await service.mutate({ ...target, action: 'upsert', id: 4, vector: [0.9, 0.1, 0], payload: { title: 'temporary', category: 'docs' }, confirm: vectorConfirmation(target) })
     expect((await service.collections(profile.id)).find((item) => item.name === 'harbor_articles')?.records).toBe(4)
     await service.mutate({ ...target, action: 'delete', id: 4, confirm: vectorConfirmation(target) })
-    await service.closeAll()
+    const exactId = '9007199254740993'
+    try {
+      await service.mutate({ ...target, action: 'upsert', id: exactId, vector: [1, 0, 0], payload: {}, payloadJson: '{"exact":9007199254740993,"category":"precision"}', confirm: vectorConfirmation(target) })
+      const exact = await service.search({ ...target, requestId: crypto.randomUUID(), vector: [1, 0, 0], filterJson: '{"must":[{"key":"category","match":{"value":"precision"}}]}', limit: 2, includeVectors: false })
+      expect(exact.hits).toMatchObject([{ id: exactId, payload: { exact: exactId } }])
+    } finally {
+      await service.mutate({ ...target, action: 'delete', id: exactId, confirm: vectorConfirmation(target) })
+      await service.closeAll()
+    }
   })
 })
 

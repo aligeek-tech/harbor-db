@@ -13,6 +13,7 @@ export const vectorSearchSchema = z
     ...target,
     requestId: z.string().uuid(),
     vector: z.array(z.number().finite()).min(1).max(4096),
+    filterJson: z.string().max(65536).optional(),
     filter: z.record(z.string(), z.unknown()).optional(),
     limit: z.number().int().min(1).max(200).default(50),
     includeVectors: z.boolean().default(false),
@@ -28,8 +29,9 @@ export const vectorMutateSchema = z.discriminatedUnion('action', [
     .object({
       ...target,
       action: z.literal('upsert'),
-      id: z.union([z.string().min(1).max(512), z.number().int().nonnegative()]),
+      id: z.union([z.string().min(1).max(512), z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)]),
       vector: z.array(z.number().finite()).min(1).max(4096),
+      payloadJson: z.string().max(1_000_000).optional(),
       payload: z.record(z.string(), z.unknown()).default({}),
       confirm: z.string().max(1024),
     })
@@ -38,7 +40,7 @@ export const vectorMutateSchema = z.discriminatedUnion('action', [
     .object({
       ...target,
       action: z.literal('delete'),
-      id: z.union([z.string().min(1).max(512), z.number().int().nonnegative()]),
+      id: z.union([z.string().min(1).max(512), z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)]),
       confirm: z.string().max(1024),
     })
     .strict(),

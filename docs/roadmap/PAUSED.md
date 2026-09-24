@@ -1,4 +1,6 @@
-# Graceful pause — 2026-09-18
+# Historical graceful pause — 2026-09-18
+
+**Resumed 2026-09-24 by explicit owner instruction: continue in this task only, reach a verified release point and publish, including broader Linux packaging. No additional tasks or agents. The previous pause/no-release instructions below are historical.**
 
 **Owner-requested pause. Do not resume implementation, verification, downloads, fixtures, schedules or worker tasks without a new user instruction.** The full 78-ticket roadmap is not complete. At the original pause no commits or remote changes were authorized. The owner subsequently authorized committing and pushing this development checkpoint only; no tag, release, version bump, or implementation resumption is authorized.
 

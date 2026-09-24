@@ -8,7 +8,7 @@ describe('Linux sandbox setup policy', () => {
       '/home/developer/My Project/node_modules/electron/dist/electron',
     )
     expect(policy.text).toContain('"/home/developer/My Project/node_modules/electron/dist/electron"')
-    expect(policy.text).toContain('"/home/developer/My Project/release/linux-unpacked/harbor-db"')
+    expect(policy.text).toContain(`"/home/developer/My Project/release/linux${process.arch === 'arm64' ? '-arm64' : ''}-unpacked/harbor-db"`)
     expect(policy.text.match(/userns,/g)).toHaveLength(2)
     expect(policy.text).not.toContain('/**')
     expect(policy.text).not.toContain('capability sys_admin')

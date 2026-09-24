@@ -59,7 +59,7 @@ async function grant(
   const file = join(directory, name)
   await writeFile(file, contents)
   const identity = await stat(file)
-  return { path: file, device: identity.dev, inode: identity.ino, format }
+  return { path: file, device: identity.dev, inode: identity.ino, size: identity.size, mtimeMs: identity.mtimeMs, ctimeMs: identity.ctimeMs, format }
 }
 describe('real DuckDB worker adapter', () => {
   it('creates only by deliberate request, persists, never overwrites and never creates an absent open target', async () => {
@@ -301,6 +301,7 @@ describe('real DuckDB worker adapter', () => {
       path: parquet,
       device: identity.dev,
       inode: identity.ino,
+      size: identity.size, mtimeMs: identity.mtimeMs, ctimeMs: identity.ctimeMs,
       format: 'parquet',
     }
     await connect()

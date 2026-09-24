@@ -19,7 +19,7 @@ npmRebuild: false
 artifactName: Harbor-DB-${version}-${os}-${arch}.${ext}
 linux:
   category: Development
-  target: [AppImage, deb]
+  target: [AppImage, deb, rpm, tar.gz]
   # ICNS expands into the standard hicolor sizes; a single 1024 PNG is not indexed by many desktops.
   icon: resources/icon.icns
   executableName: harbor-db

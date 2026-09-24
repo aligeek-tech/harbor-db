@@ -33,6 +33,7 @@ interface Job {
 export interface ImportHardLimits {
   maxRows: number
   maxBytes: number
+  signal?: AbortSignal
 }
 const warnings = [
   'Each batch commits independently. Cancellation or a later error does not undo earlier committed batches.',
@@ -161,6 +162,7 @@ export class ImportService {
   }
 
   async startImport(rawInput: StartImportInput, limits?: ImportHardLimits): Promise<ImportJobSnapshot> {
+    if (limits?.signal?.aborted) throw new Error('Import was cancelled before it started.')
     const input = startImportSchema.parse(rawInput)
     if (this.closed) throw new Error('The import service is closing.')
     if (this.starting + [...this.jobs.values()].filter((job) => job.snapshot.state === 'running').length >= 2)
@@ -180,15 +182,21 @@ export class ImportService {
     this.starting++
     const generation = this.generations.get(input.connectionId) ?? 0
     const controller = new AbortController()
+    const cancel = () => controller.abort(limits?.signal?.reason)
+    limits?.signal?.addEventListener('abort', cancel, { once: true })
+    if (limits?.signal?.aborted) cancel()
+    let handedOff = false
     let file: FileHandle | undefined, writer: ImportWriter | undefined
     try {
       file = await open(source.path, constants.O_RDONLY | constants.O_NOFOLLOW)
       if ((await identity(file)).key !== source.identity)
         throw new Error('The source file changed after preview. Preview it again before importing.')
+      if (controller.signal.aborted) throw new Error('Import cancelled before opening the destination.')
       writer = await this.backend.openImport(
         { ...input, columns: input.mapping.map((item) => item.target) },
         controller.signal,
       )
+      if (controller.signal.aborted) throw new Error('Import cancelled before writing rows.')
       const columnMap = new Map(writer.columns.map((column) => [column.name, column]))
       if (input.mapping.some((item) => !columnMap.has(item.target)))
         throw new Error('A mapped destination column no longer exists. Refresh structure and preview again.')
@@ -228,11 +236,13 @@ export class ImportService {
         },
       }
       this.jobs.set(id, job)
-      job.done = this.run(job, input, source, file, writer, columnMap, limits)
+      handedOff = true
+      job.done = this.run(job, input, source, file, writer, columnMap, limits).finally(() => limits?.signal?.removeEventListener('abort', cancel))
       file = undefined
       writer = undefined
       return this.getJob(id)
     } finally {
+      if (!handedOff) limits?.signal?.removeEventListener('abort', cancel)
       this.starting--
       if (writer) await writer.close()
       if (file) await file.close()

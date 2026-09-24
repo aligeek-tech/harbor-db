@@ -204,4 +204,20 @@ describe('main import source grants and bounded jobs', () => {
       await imports.closeAll()
     }
   })
+  it('propagates parent cancellation while the destination is opening, before any batch', async () => {
+    const parent=new AbortController();let writes=0,closed=false
+    let opened!:()=>void, release!:()=>void
+    const opening=new Promise<void>(resolve=>{opened=resolve})
+    const service=new ImportService({openImport:async(_input,signal)=>{
+      opened();await new Promise<void>(resolve=>{release=resolve})
+      expect(signal.aborted).toBe(true)
+      return {columns,writeBatch:async()=>{writes++},close:async()=>{closed=true}}
+    }})
+    const preview=await service.previewImport(options,await source())
+    const starting=service.startImport(input(preview.sourceId),{maxRows:10,maxBytes:4096,signal:parent.signal})
+    await opening;parent.abort();release()
+    await expect(starting).rejects.toThrow('cancelled before writing')
+    expect(writes).toBe(0);expect(closed).toBe(true);await service.closeAll()
+  })
+
 })

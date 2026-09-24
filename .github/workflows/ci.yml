@@ -30,9 +30,14 @@ jobs:
         run: npm run setup:linux
       - run: npm run lint && npm run typecheck && npm test && npm run build
       - run: docker compose --profile timescale up -d --wait
+      - name: Start isolated MySQL with verified TLS
+        run: |
+          docker compose -p harbor-ci-mysql -f compose.mysql.yaml up -d --wait
+          docker compose -p harbor-ci-mysql -f compose.mysql.yaml cp mysql:/tmp/harbor-mysql-tls/cert.pem /tmp/harbor-ci-mysql-ca.pem
+          echo 'HARBOR_MYSQL_TLS_CA=/tmp/harbor-ci-mysql-ca.pem' >> "$GITHUB_ENV"
       - run: npm run db:seed
       - run: npm run test:integration
-        env: { HARBOR_TIMESCALE: '1' }
+        env: { HARBOR_TIMESCALE: '1', HARBOR_MYSQL: '1' }
       - run: xvfb-run --auto-servernum npx playwright test
         env: { HARBOR_INTEGRATION: '1', HARBOR_TIMESCALE: '1' }
       - run: npm run package
@@ -49,6 +54,8 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
       - run: docker compose --profile timescale down
+        if: always()
+      - run: docker compose -p harbor-ci-mysql -f compose.mysql.yaml down
         if: always()
   package:
     strategy:

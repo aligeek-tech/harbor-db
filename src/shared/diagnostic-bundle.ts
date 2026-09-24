@@ -15,6 +15,7 @@ const capabilitySchema = z.enum([
   'cancel',
   'search',
   'vectors',
+  'timeSeries',
 ])
 export const diagnosticEventCodeSchema = z.enum([
   'metadata_integrity_ok',

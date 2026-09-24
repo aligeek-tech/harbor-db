@@ -27,6 +27,9 @@ export interface DuckDBFileGrant {
   path: string
   device: number
   inode: number
+  size: number
+  mtimeMs: number
+  ctimeMs: number
   format: 'csv' | 'json' | 'parquet'
 }
 export interface DuckDBWorkerOptions {
@@ -430,6 +433,9 @@ async function localFile(current: Session, request: DuckDBWorkerRequest): Promis
   if (request.action === 'importFile' && (options.readOnly || current.state !== 'idle'))
     throw new Error('Import requires writes enabled and an idle transaction.')
   await protectedFile(grant.path, grant.device, grant.inode)
+  const sourceIdentity = await stat(grant.path)
+  if (sourceIdentity.size !== grant.size || sourceIdentity.mtimeMs !== grant.mtimeMs || sourceIdentity.ctimeMs !== grant.ctimeMs)
+    throw new Error('The granted source file changed. Select it again before preview or import.')
   // A separate instance receives only this exact native-picked path. Arbitrary editor
   // SQL never runs here and cannot amend the allowlist or reuse this reader connection.
   // allowed_paths is SQL-only configuration in this pinned driver. Enable access
@@ -486,6 +492,9 @@ async function localFile(current: Session, request: DuckDBWorkerRequest): Promis
     }
     checkCancelled(current)
     await protectedFile(grant.path, grant.device, grant.inode)
+    const finalIdentity = await stat(grant.path)
+    if (finalIdentity.size !== grant.size || finalIdentity.mtimeMs !== grant.mtimeMs || finalIdentity.ctimeMs !== grant.ctimeMs)
+      throw new Error('The granted source file changed during import.')
     await transact(current, 'commit')
     importing = false
     return { affectedRows }

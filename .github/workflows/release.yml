@@ -26,6 +26,9 @@ jobs:
           - runner: ubuntu-24.04
             platform: linux
             arch: x64
+          - runner: ubuntu-24.04-arm
+            platform: linux
+            arch: arm64
           - runner: macos-15-intel
             platform: mac
             arch: x64
@@ -56,10 +59,33 @@ jobs:
           }
           if (process.arch !== process.env.EXPECTED_ARCH) throw new Error(`Unexpected runner architecture: ${process.arch}`);
           NODE
+      - name: Install Linux packaging and desktop prerequisites
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rpm xvfb apparmor-utils libgtk-3-0t64 libnss3 libgbm1 libasound2t64 libsecret-1-0
       - run: npm ci
+      - name: Enable the per-executable Linux sandbox
+        if: matrix.platform == 'linux'
+        run: npm run setup:linux
       - run: npm run build
       - name: Create native installers
         run: npx electron-builder --${{ matrix.platform }} --${{ matrix.arch }} --publish never
+      - name: Smoke test the actual Linux package and native local engines
+        if: matrix.platform == 'linux'
+        run: xvfb-run --auto-servernum npx playwright test tests/package-local.e2e.ts
+        env: { HARBOR_PACKAGE_LOCAL: '1' }
+      - name: Smoke test the actual desktop package and native local engines
+        if: matrix.platform != 'linux'
+        run: npx playwright test tests/package-local.e2e.ts
+        env: { HARBOR_PACKAGE_LOCAL: '1' }
+      - name: Preserve native package test evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: package-evidence-${{ matrix.platform }}-${{ matrix.arch }}
+          path: test-results
+          if-no-files-found: ignore
       - name: Upload installers for the release job
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
@@ -67,6 +93,8 @@ jobs:
           path: |
             release/*.AppImage
             release/*.deb
+            release/*.rpm
+            release/*.tar.gz
             release/*.dmg
             release/*.zip
             release/*.exe
@@ -95,7 +123,7 @@ jobs:
           pattern: harbor-dist-*
           merge-multiple: true
           path: artifacts
-      - name: Require all seven installers and calculate SHA-256
+      - name: Require all thirteen installers and calculate SHA-256
         run: |
           node --input-type=module <<'NODE'
           import { createHash } from 'node:crypto';
@@ -103,7 +131,7 @@ jobs:
           import { readFile, readdir, stat, writeFile } from 'node:fs/promises';
           const { version } = JSON.parse(await readFile('package.json', 'utf8'));
           if (process.env.RELEASE_TAG !== `v${version}`) throw new Error('Release version mismatch.');
-          const suffixes = ['linux-x86_64.AppImage', 'linux-amd64.deb', 'mac-x64.dmg', 'mac-x64.zip', 'mac-arm64.dmg', 'mac-arm64.zip', 'win-x64.exe'];
+          const suffixes = ['linux-x86_64.AppImage', 'linux-amd64.deb', 'linux-x86_64.rpm', 'linux-x64.tar.gz', 'linux-arm64.AppImage', 'linux-arm64.deb', 'linux-aarch64.rpm', 'linux-arm64.tar.gz', 'mac-x64.dmg', 'mac-x64.zip', 'mac-arm64.dmg', 'mac-arm64.zip', 'win-x64.exe'];
           const expected = suffixes.map(suffix => `Harbor-DB-${version}-${suffix}`).sort();
           const actual = (await readdir('artifacts')).sort();
           if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`Installer set is incomplete or unexpected: ${actual.join(', ')}`);
@@ -116,7 +144,7 @@ jobs:
           }
           await writeFile('artifacts/SHA256SUMS', lines.join('\n') + '\n');
           const docs = `https://github.com/${process.env.GH_REPO}/blob/${process.env.RELEASE_TAG}/docs/RELEASE.md`;
-          await writeFile('release-notes.md', `Harbor DB ${version}: a local desktop workspace for PostgreSQL, MariaDB, MongoDB, and Redis.\n\nDownload the installer matching your operating system and architecture from Assets below. macOS includes separate Intel (x64) and Apple Silicon (arm64) builds and requires macOS 13 or later. SHA256SUMS covers all seven installers.\n\nThese builds have no verified publisher certificate: Windows is unsigned, and macOS uses an ad-hoc signature without Apple notarization. Operating systems may show warnings or block installation according to local policy. Read the [installation and verification instructions](${docs}) before installing.\n\n`);
+          await writeFile('release-notes.md', `Harbor DB ${version}: a local database workbench with exact-value and cancellation safeguards, native-engine previews, and expanded Linux distribution packages.\n\nDownload the installer matching your operating system and architecture from Assets below. macOS includes separate Intel (x64) and Apple Silicon (arm64) builds and requires macOS 13 or later. Linux offers AppImage, DEB, RPM and portable tar.gz builds for x64 and ARM64. These target modern glibc desktop systems; Alpine/musl, 32-bit systems and every individual distribution are not certified. SHA256SUMS covers all thirteen installers. The roadmap remains in progress; see the support matrix for preview and unverified adapters.\n\nThese builds have no verified publisher certificate: Windows is unsigned, and macOS uses an ad-hoc signature without Apple notarization. Operating systems may show warnings or block installation according to local policy. Read the [installation and verification instructions](${docs}) before installing.\n\n`);
           NODE
       - name: Add generated change notes
         run: gh api --method POST "repos/$GH_REPO/releases/generate-notes" -f "tag_name=$RELEASE_TAG" --jq .body >> release-notes.md

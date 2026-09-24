@@ -484,6 +484,7 @@ export function registerIpc(
   const automationImportContext = (task: AutomationDefinition) =>
     JSON.stringify({ profile: executionContext(store.profile(task.target.connectionId)), target: task.target })
   const automation = new AutomationService(store, async (task, signal, reviewedImport) => {
+    if (signal.aborted) throw new Error('Reusable task cancelled before execution.')
     const profile = store.profile(task.target.connectionId)
     if (profile.environment.toLowerCase() === 'production')
       throw new Error('Production reusable tasks remain disabled. Run the underlying workflow manually after review.')
@@ -521,7 +522,7 @@ export function registerIpc(
       const snapshot = await transfers.startExport({
         connectionId: profile.id, database: task.target.database, sql: task.target.sql,
         format: task.target.format, spreadsheetSafe: task.target.spreadsheetSafe, consentRerun: true,
-      }, outputPath, { maxRows: task.limits.maxRows, maxBytes: task.limits.maxOutputBytes })
+      }, outputPath, { maxRows: task.limits.maxRows, maxBytes: task.limits.maxOutputBytes, signal })
       const cancel = () => { transfers.cancelJob(snapshot.id) }
       signal.addEventListener('abort', cancel, { once: true })
       try {
@@ -554,7 +555,7 @@ export function registerIpc(
       batchSize: task.target.batchSize, errorPolicy: task.target.errorPolicy,
       consentBatchCommits: reviewedImport.consentBatchCommits,
       consentNonTransactionalAppend: reviewedImport.consentNonTransactionalAppend,
-    }, { maxRows: task.limits.maxRows, maxBytes: task.limits.maxOutputBytes })
+    }, { maxRows: task.limits.maxRows, maxBytes: task.limits.maxOutputBytes, signal })
     const cancel = () => { imports.cancelJob(snapshot.id) }
     signal.addEventListener('abort', cancel, { once: true })
     try {
@@ -1016,7 +1017,7 @@ export function registerIpc(
       const token = randomUUID()
       fileGrants.set(token, {
         connectionId: input.connectionId,
-        grant: { path, device: info.dev, inode: info.ino, format: input.format },
+        grant: { path, device: info.dev, inode: info.ino, size: info.size, mtimeMs: info.mtimeMs, ctimeMs: info.ctimeMs, format: input.format },
         expires: Date.now() + 15 * 60 * 1000,
       })
       return { token, name: basename(path), bytes: info.size, format: input.format }

@@ -213,4 +213,23 @@ describe('reusable local task automation', () => {
       },
     })).toThrow('reviewed import destination')
   })
+  it('refuses a drifted schedule at execution time, not only at desktop startup', async () => {
+    const {store}=openStore()
+    const foreign=automationHostTimeZone()==='Etc/UTC'?'Asia/Tehran':'Etc/UTC'
+    const value=task({schedule:{kind:'daily',hour:3,minute:15,timeZone:foreign}})
+    store.saveAutomation(value)
+    const execute=vi.fn()
+    const service=new AutomationService(store,execute)
+    await expect(service.run(value.id,'schedule')).resolves.toMatchObject({code:'schedule-zone-mismatch'})
+    expect(execute).not.toHaveBeenCalled()
+    expect(store.automations()[0].enabled).toBe(false)
+  })
+  it('never persists arbitrary provider text in either success or failure logs', async () => {
+    const {store}=openStore();const value=task({schedule:{kind:'manual'}});store.saveAutomation(value)
+    const service=new AutomationService(store,async()=>{throw new Error('duplicate value PRIVATE_CUSTOMER in column')})
+    const run=await service.run(value.id);expect(JSON.stringify(run)).not.toContain('PRIVATE_CUSTOMER')
+    const success=new AutomationService(store,async()=>({rows:1,message:'PRIVATE_CUSTOMER'}))
+    expect(JSON.stringify(await success.run(value.id))).not.toContain('PRIVATE_CUSTOMER')
+  })
+
 })

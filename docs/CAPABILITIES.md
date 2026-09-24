@@ -1,10 +1,10 @@
 # Capabilities and limits
 
-This document describes the **unreleased local roadmap implementation**, based on `d009cc8` / version 0.1.7. It does not describe a newly published release. Ticket acceptance and current evidence remain in [the roadmap backlog](roadmap/BACKLOG.md), [progress](roadmap/PROGRESS.md), and [verification evidence](roadmap/EVIDENCE.md). Adapter presence, a passing handshake, and a package build are distinct from full compatibility acceptance.
+This document describes the **0.1.8 release candidate** built from the integrated roadmap checkpoint. Publication and final artifact verification are recorded separately in VALIDATION.md. Ticket acceptance and current evidence remain in [the roadmap backlog](roadmap/BACKLOG.md), [progress](roadmap/PROGRESS.md), and [verification evidence](roadmap/EVIDENCE.md). Adapter presence, a passing handshake, and a package build are distinct from full compatibility acceptance.
 
 ## Observed engine support
 
-All server fixtures contain disposable synthetic data. Desktop evidence is on macOS ARM64. Other operating systems, server versions and authentication modes need their own verification.
+All server fixtures contain disposable synthetic data. Engine-specific desktop evidence below is primarily historical macOS ARM64 evidence from September18; it is not a fresh all-engine regression. The September24 release gates, native platform package smoke checks and their limits are recorded in [RELEASE-CHECKPOINT.md](roadmap/RELEASE-CHECKPOINT.md). Other server versions and authentication modes need their own verification.
 
 | Engine | Observed version / driver | Implemented workflow | Current verification and limits |
 | --- | --- | --- | --- |
@@ -16,8 +16,26 @@ All server fixtures contain disposable synthetic data. Desktop evidence is on ma
 | SQL Server | 2022 /16.0.4295.3; tedious20.0.0 | SQL-auth T-SQL, per-database/tab sessions, catalog/filter/paging, exact values, conflict edits, cancel and snapshot export | Native backend suite passed; desktop workflow in progress. Server runs under unsupported AMD64 emulation on this ARM Mac. Integrated/Entra auth and trusted-CA/SSH positive checks unverified; raw complex exact-result batches have explicit restrictions. [Details](roadmap/driver-preflight-sqlserver.md). |
 | MongoDB | 7.0.43 standalone; mongodb7.6.0 | Authorized collection browsing, Extended JSON find/aggregate, optimistic single-document writes and lifecycle recovery | Real backend, desktop and package checks. Replica/SRV/Atlas depth is separate unfinished work. No automatic write replay. |
 | Redis | 8.10.1 standalone; redis6.2.1 | Bounded binary-safe SCAN, type-aware value inspection and guarded mutations, supported console commands | Real backend, desktop and package checks. Cluster/Sentinel/Valkey work remains separately tracked. |
-| ClickHouse | Disposable ARM64 26.3.33.24 fixture; @clickhouse/client1.23.1 installed | Adapter work in progress | No completed support claim yet. A running fixture and engine enum do not establish support. |
-| Remaining roadmap engines | Not yet accepted | See individual DB/EXT tickets | Do not infer wire-protocol compatibility or mock success as real compatibility. |
+| ClickHouse | 26.3.33.24; client1.23.1 | Exact analytical SQL, catalogs/DDL/plans, streaming reads and explicitly consented MergeTree append | Native backend/desktop evidence in driver preflight. Requires25.11+; no transactional edit guarantees. |
+| Elasticsearch / OpenSearch | Native fixture versions in search driver preflight | Mappings, bounded DSL/aggregations, snapshot paging, optimistic document writes | Historical native backend and2desktop cases. SSH/managed services and other versions unverified. |
+| Oracle | Free26ai23.26.1; oracledb7.0.1 thin | SQL, catalogs, tab transactions, conflict edits and streaming | Historical24native tests, streaming and desktop. Other editions/authentication modes unverified. |
+| Valkey / Redis Cluster / Sentinel | Valkey9.1.2; Redis fixture versions in worker-c.md | Engine-aware topology, ACL/TLS, guarded binary-safe workflows | Historical native and desktop checks. Valkey standalone only. |
+| TimescaleDB | 2.27.1 / PostgreSQL17 | Hypertable-aware catalog and PostgreSQL workflows | Disposable native backend/desktop; no administration acceptance beyond surfaced capabilities. |
+| CockroachDB / YugabyteDB / TiDB / Vitess | 25.4.0 / YSQL2026.1.1.2 / 8.5.5 / 24.0.2 | Explicit engine identity, supported SQL/catalog/edit/transfer paths with engine guards | Historical native backend and individual desktops. Vitess used AMD64 emulation; managed variants unverified. |
+| Trino | 483 | Catalogs, reviewed SQL/jobs, exact values, streaming and scoped cancellation | Historical verifiedTLS/password native backend and desktop. Catalog-specific writes differ; no generic transaction claim. |
+| Neo4j | 5.26.30; driver6.2.0 | Cypher, bounded graph/tabular results, guarded writes | Historical native backend and desktop. Clusters/managed Aura unverified. |
+| DynamoDB | Local3.3.1; SDK3.1135.0 | Table/key/index-aware reads, typed values and conditional mutations | Real local emulator and desktop evidence. AWS IAM/cloud not verified. |
+| Cassandra | 5.0.9; driver4.9.0 | Keyspace/table/CQL, bounded paging, exact typed values, conditional mutation | Historical13native tests, safety tests and desktop. Scylla support is not integrated. |
+| CouchDB | 3.5.1 | Databases/documents, revision conflicts, guarded CRUD | Historical native backend and desktop. Couchbase is separate and not integrated. |
+| InfluxDB / QuestDB | 2.9.1 / 10.0.1 | Engine-specific time-range/SQL workspaces, exact timestamps and numeric values | Historical native backend and desktops; Influx customTLS also exercised. Latest wide-column viewport polish lacks complete visual acceptance. |
+| Qdrant / Milvus / Weaviate | Qdrant1.19.1 fresh; other native versions in worker checkpoint evidence | Collection metadata, bounded vector search, explicitly confirmed single-point mutation | Native fixture evidence plus fresh Qdrant regression and nativeTLS safety test. Milvus uses scalar expression JSON; Weaviate filter translation explicitly unavailable. No universal compare-and-swap guarantee. |
+| Pinecone | API2025-04 | Opt-in verified control/data-plane adapter, bounded search, reviewed mutations | Protocol tests only; real project/key unavailable. No general record-enumeration claim. |
+| BigQuery / Snowflake / Databricks SQL / Athena | Pinned REST/SDK contracts in driver preflights | Cost-reviewed inert SQL drafts, scoped jobs/catalog/results/cancellation | Implemented previews with local protocol tests; no authorized cloud targets, no real compatibility acceptance. |
+| Redshift / managed SQL | Explicit profile policies | Existing SQL path with service-specific restrictions | Real provider accounts/targets unavailable; do not infer compatibility from protocol tests. |
+| Firebird | 5.0.4 | Native wire SQL/catalog, exact types, transactions and guarded edits | Historical native backend and desktop, including restricted role and uncertain-commit behavior. |
+| SAP HANA | hdb2.29.6 | Tenant-bound SQL/catalog/readonly export | Local driver/contract checks only; licensed disposable server unavailable. |
+| IBM Db2 | Optional ibm_db4.0.1 | Isolated native worker boundary and missing-runtime guidance | No proprietary runtime or server installed; native execution/packaging unverified. Separate license/runtime prerequisite. |
+| ScyllaDB / Couchbase / Cosmos DB / Firestore | Not in this release | Work exists only in separate frozen/partial worker copies | Not integrated, not advertised as working. Cosmos license and Firestore regional availability also block native verification. |
 
 ## Authentication and trust
 
@@ -54,7 +72,7 @@ JSON exports use `{ columns, rows }` to preserve duplicate names and exact numer
 
 ## Unfinished roadmap work and persistent boundaries
 
-- Redis Cluster/Sentinel, pub/sub, blocking operations, modules and unrestricted scripting.
+- Redis pub/sub, blocking operations, modules and unrestricted scripting remain limited to explicit supported tools; topology support does not authorize arbitrary commands.
 - SQL object/schema design migrations, database backup/restore and native administrative tools.
 - Editing arbitrary joined/aggregated results or tables identifiable only by a unique key rather than a primary key.
 - Guaranteed round-trip DDL generation for every PostgreSQL object; use `pg_dump` for authoritative definitions.

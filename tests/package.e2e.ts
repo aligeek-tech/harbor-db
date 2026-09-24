@@ -17,6 +17,7 @@ test('packaged application loads local assets, native workers, sandbox and datab
     process.env.HARBOR_PACKAGE !== '1',
     'Opt-in test of the native package with disposable development services running.',
   )
+  const sessionOnly = process.env.HARBOR_PACKAGE_SESSION_ONLY === '1'
   const configDirectory = await mkdtemp(join(tmpdir(), 'harbor-package-'))
   const env = Object.fromEntries(
     Object.entries(process.env).filter(
@@ -25,7 +26,7 @@ test('packaged application loads local assets, native workers, sandbox and datab
         !['ELECTRON_RUN_AS_NODE', 'ELECTRON_RENDERER_URL', 'HARBOR_USER_DATA'].includes(entry[0]),
     ),
   )
-  const macApplication = resolve(`release/mac-${process.arch}/Harbor DB.app`)
+  const macApplication = resolve(`release/${process.arch === 'arm64' ? 'mac-arm64' : 'mac'}/Harbor DB.app`)
   const executablePath =
     process.env.HARBOR_PACKAGE_EXECUTABLE ||
     resolve(
@@ -33,7 +34,7 @@ test('packaged application loads local assets, native workers, sandbox and datab
         ? `${macApplication}/Contents/MacOS/Harbor DB`
         : process.platform === 'win32'
           ? 'release/win-unpacked/Harbor DB.exe'
-          : 'release/linux-unpacked/harbor-db',
+          : `release/linux${process.arch === 'arm64' ? '-arm64' : ''}-unpacked/harbor-db`,
     )
   let platformVerification: Record<string, unknown> = { status: 'not-checked' }
   if (process.platform === 'darwin') {
@@ -49,7 +50,7 @@ test('packaged application loads local assets, native workers, sandbox and datab
   const launchOptions = {
     chromiumSandbox: true,
     executablePath,
-    args: [`--user-data-dir=${configDirectory}`],
+    args: [`--user-data-dir=${configDirectory}`, ...(sessionOnly ? ['--use-mock-keychain', '--password-store=basic'] : [])],
     env: { ...env, XDG_CONFIG_HOME: configDirectory },
     timeout: 30000,
   }
@@ -100,6 +101,8 @@ test('packaged application loads local assets, native workers, sandbox and datab
     expect(await page.evaluate(() => typeof (globalThis as unknown as { require?: unknown }).require)).toBe(
       'undefined',
     )
+    const mysqlCA = process.env.HARBOR_MYSQL_TLS_CA ? await readFile(process.env.HARBOR_MYSQL_TLS_CA, 'utf8') : ''
+    if (!mysqlCA) throw new Error('Packaged MySQL verification requires HARBOR_MYSQL_TLS_CA from the disposable fixture.')
     const profiles = (['postgres', 'mariadb', 'mysql', 'redis', 'mongodb'] as const).map((engine) =>
       profileSchema.parse({
         id: `package-${engine}`,
@@ -120,6 +123,7 @@ test('packaged application loads local assets, native workers, sandbox and datab
         database: engine === 'redis' ? '' : 'harbor',
         schema: engine === 'postgres' ? 'public' : ['mariadb', 'mysql'].includes(engine) ? 'harbor' : '',
         readOnly: true,
+        ...(engine === 'mysql' ? {tls:{enabled:true,rejectUnauthorized:true,ca:mysqlCA,cert:'',keyPath:''}} : {}),
       }),
     )
     const results = await page.evaluate(
@@ -172,7 +176,7 @@ test('packaged application loads local assets, native workers, sandbox and datab
         }
         return results
       },
-      { profiles, rememberPasswords: secureStorage.available },
+      { profiles, rememberPasswords: secureStorage.available && !sessionOnly },
     )
     expect(results.map((result) => result.state)).toEqual(profiles.map(() => 'connected'))
     console.info('HARBOR_PACKAGE_STAGE remote-drivers-complete')
@@ -224,7 +228,7 @@ test('packaged application loads local assets, native workers, sandbox and datab
     expect(errors).toEqual([])
     console.info('HARBOR_PACKAGE_STAGE editor-draft-complete')
     let rememberedReconnect: { exercised: boolean; states: string[] } = { exercised: false, states: [] }
-    if (secureStorage.available) {
+    if (secureStorage.available && !sessionOnly) {
       const storedProfiles = (await page.evaluate(() => window.harbor.bootstrap())).profiles
       expect(storedProfiles.every((profile) => profile.hasPassword)).toBe(true)
       await desktop.close()

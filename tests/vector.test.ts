@@ -74,8 +74,8 @@ describe('bounded vector provider adapter', () => {
     })
     await service.connect(profile('weaviate'))
     await service.collections('weaviate')
-    const result = await service.search({ connectionId: 'weaviate', collection: 'Article', requestId: crypto.randomUUID(), vector: [1, 2], filter: { title: 'x' }, limit: 2, includeVectors: false })
-    expect(result.warnings[0]).toContain('not available')
+    await expect(service.search({ connectionId: 'weaviate', collection: 'Article', requestId: crypto.randomUUID(), vector: [1, 2], filter: { title: 'x' }, limit: 2, includeVectors: false })).rejects.toThrow('no query was sent')
+    const result = await service.search({ connectionId: 'weaviate', collection: 'Article', requestId: crypto.randomUUID(), vector: [1, 2], limit: 2, includeVectors: false })
     expect(result.hits[0]?.payload).toEqual({ title: 'a' })
   })
 
@@ -95,5 +95,60 @@ describe('bounded vector provider adapter', () => {
     expect(result.usage).toEqual({ readUnits: 1 })
     expect(result.warnings[0]).toContain('does not guarantee')
     expect(JSON.stringify(result)).not.toContain(key)
+  })
+})
+
+
+describe('vector release safety boundaries', () => {
+  it('preserves uint64 ids and nested numeric lexemes without replaying rounded JSON', async () => {
+    let submitted = ''
+    const service = new VectorService(async (url, init) => {
+      if(new URL(String(url)).pathname === '/') return response({version:'1'})
+      if(String(url).includes('/query')) return new Response('{"result":{"points":[{"id":18446744073709551615,"score":0.25,"payload":{"n":9223372036854775807,"decimal":0.123456789012345678901,"a":[-0,1e30]},"vector":[1,0]}]}}')
+      submitted = String(init?.body);return response({status:'ok'})
+    })
+    await service.connect(profile('qdrant'))
+    const target={connectionId:'qdrant',collection:'docs'}
+    const result=await service.search({...target,requestId:crypto.randomUUID(),vector:[1,0],limit:1,includeVectors:true})
+    expect(result.hits[0]).toMatchObject({id:'18446744073709551615',score:0.25,vector:[1,0],payload:{n:'9223372036854775807',decimal:'0.123456789012345678901',a:['-0','1e30']}})
+    await service.mutate({...target,action:'upsert',id:result.hits[0].id,vector:[1,0],payload:{},payloadJson:'{"n":9223372036854775807,"decimal":0.123456789012345678901}',confirm:vectorConfirmation(target)})
+    expect(submitted).toContain('"id":18446744073709551615')
+    expect(submitted).toContain('"n":9223372036854775807')
+    expect(submitted).toContain('0.123456789012345678901')
+    await expect(service.mutate({...target,action:'delete',id:Number.MAX_SAFE_INTEGER+1,confirm:vectorConfirmation(target)})).rejects.toThrow()
+    await service.closeAll()
+  })
+  it('omits provider errors and rejects Pinecone credential redirection', async () => {
+    const service=new VectorService(async url=>String(url).endsWith('/')?response({version:'1'}):new Response('CANARY_SECRET',{status:500}))
+    await service.connect(profile('qdrant'))
+    await expect(service.search({connectionId:'qdrant',collection:'docs',requestId:crypto.randomUUID(),vector:[1],limit:1,includeVectors:false})).rejects.toThrow('Provider details omitted')
+    const fetcher=vi.fn(async()=>response({indexes:[{name:'docs',host:'attacker.example'}]}))
+    const pine=new VectorService(fetcher);await pine.connect(profile('pinecone'),{password:'PRIVATE'})
+    await expect(pine.search({connectionId:'pinecone',collection:'docs',requestId:crypto.randomUUID(),vector:[1],limit:1,includeVectors:false})).rejects.toThrow('host is unavailable or invalid')
+    expect(fetcher.mock.calls.length).toBe(2)
+    await expect(pine.connect({...profile('pinecone'),host:'attacker.example'},{password:'PRIVATE'})).rejects.toThrow('control plane')
+  })
+  it('aborts external-signal searches at their deadline and disconnects mutation requests', async () => {
+    vi.useFakeTimers()
+    try {
+      const service=new VectorService(async(url,init)=>{
+        if(new URL(String(url)).pathname==='/')return response({version:'1'})
+        return new Promise((_resolve,reject)=>init?.signal?.addEventListener('abort',()=>reject(new Error('raw SECRET')),{once:true}))
+      })
+      await service.connect({...profile('qdrant'),queryTimeout:1000})
+      const search=service.search({connectionId:'qdrant',collection:'docs',requestId:crypto.randomUUID(),vector:[1],limit:1,includeVectors:false})
+      const assertion=expect(search).rejects.toThrow('deadline exceeded')
+      await vi.advanceTimersByTimeAsync(1001);await assertion
+      const target={connectionId:'qdrant',collection:'docs'}
+      const mutate=service.mutate({...target,action:'delete',id:'1',confirm:vectorConfirmation(target)})
+      const denied=expect(mutate).rejects.toThrow('outcome may be uncertain')
+      await service.disconnect('qdrant');await denied
+    } finally {vi.useRealTimers()}
+  })
+  it('never issues an unfiltered Milvus request for malformed filters', async () => {
+    const fetcher=vi.fn(async(url)=>String(url).includes('describe')?response({code:0,data:{fields:[{name:'id',type:'Int64',primaryKey:true},{name:'v',type:'FloatVector'}]}}):response({code:0,data:[]}))
+    const service=new VectorService(fetcher);await service.connect(profile('milvus'))
+    await expect(service.search({connectionId:'milvus',collection:'docs',requestId:crypto.randomUUID(),vector:[1],filter:{wrong:'x'},limit:1,includeVectors:false})).rejects.toThrow('no query was sent')
+    expect(fetcher.mock.calls.some(([url])=>String(url).includes('entities/search'))).toBe(false)
   })
 })

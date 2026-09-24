@@ -185,7 +185,7 @@ test('MongoDB browser sorts, queries, saves drafts and reviews document writes',
       .fill(`mongodb://harbor:harbor_test@127.0.0.1:17017/${database}?authSource=admin`)
     await connection.getByRole('button', { name: 'Parse', exact: true }).click()
     await connection.getByRole('button', { name: 'Test connection', exact: true }).click()
-    await expect(connection.getByRole('status')).toContainText('Connection successful')
+    await expect(connection.locator('.form-status[role="status"]')).toContainText('Connection successful')
     await page.screenshot({ path: '/tmp/harbor-db-e2e/mongodb-connection.png' })
     await page.keyboard.press('Escape')
     await expect(connection).toHaveCount(0)

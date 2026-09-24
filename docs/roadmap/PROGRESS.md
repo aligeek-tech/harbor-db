@@ -1,5 +1,7 @@
 # Local implementation progress
 
+Current continuation and release gates: [RELEASE-CHECKPOINT.md](RELEASE-CHECKPOINT.md). Earlier pause/publication restrictions below are historical; the owner authorized a single-task release continuation on 2026-09-24.
+
 Baseline: `d009cc8ec8151caf228cec48bb16120e133c28ee`, clean `main`, package 0.1.7. No release, commit, push or deployment is authorized for this assignment. All 78 tickets remain in scope. The index in BACKLOG.md tracks full-ticket acceptance, not individual pieces. Unchecked tickets are incomplete.
 
 ## 2026-09-18 — active implementation
