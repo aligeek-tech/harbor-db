@@ -2,7 +2,7 @@
 
 ## September24, 2026 release continuation
 
-Current 0.1.9 candidate evidence and explicit release gates are in [RELEASE-CHECKPOINT.md](roadmap/RELEASE-CHECKPOINT.md). The earlier records below retain their original version/date; they do not certify newly integrated engines or platforms.
+Current 0.1.10 candidate evidence and explicit release gates are in [RELEASE-CHECKPOINT.md](roadmap/RELEASE-CHECKPOINT.md). The earlier records below retain their original version/date; they do not certify newly integrated engines or platforms.
 
 Runtime validation date: 2026-09-14. Public v0.1.1 downloads verified on 2026-09-15. These results describe the local host, generated fixtures and GitHub release jobs below. They do not establish behavior on every operating-system version, server version or network condition.
 

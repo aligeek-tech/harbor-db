@@ -46,7 +46,7 @@ test('large catalog and wide large-value result remain responsive in the actual 
 
     await page.getByRole('button', { name: 'New query', exact: true }).first().click()
     const columns = ["repeat('L', 65536) AS large_cell", ...Array.from({ length: 30 }, (_, index) => `repeat('w${index}', 128) AS wide_${index}`)]
-    await typeSql(page, `SELECT ${columns.join(', ')} FROM range(200);`)
+    await typeSql(page, `SELECT ${columns.join(', ')} FROM range(200);`, true)
     await page.evaluate(() => {
       const state = { last: performance.now(), maxDelay: 0, ticks: 0, timer: 0 }
       state.timer = window.setInterval(() => { const now = performance.now(); state.maxDelay = Math.max(state.maxDelay, now - state.last - 10); state.last = now; state.ticks++ }, 10)

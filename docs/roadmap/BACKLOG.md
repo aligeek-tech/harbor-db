@@ -2,7 +2,7 @@
 
 This checklist contains **78 independently tracked tickets** transcribed from the 2026-09-18 product brief. Original acceptance text is preserved in each card. Dependencies, source entry points and verification scenarios are planning additions. See [README.md](README.md) for authorization/milestones, [EVIDENCE.md](EVIDENCE.md) for common gates, and [UX_FLOWS.md](UX_FLOWS.md) for proposed interactions.
 
-**Current state:** checked tickets have the concrete local acceptance evidence recorded in their card and PROGRESS.md. Unchecked tickets remain incomplete or have unresolved verification. Delivery is **local-only**; no publication is authorized. Platform gaps remain explicit and are never converted into passes.
+**Current state:** checked tickets have the concrete local acceptance evidence recorded in their card and PROGRESS.md. Unchecked tickets remain incomplete or have unresolved verification. The owner authorized a single-task release continuation on September24; see [RELEASE-CHECKPOINT.md](RELEASE-CHECKPOINT.md). A bounded release does not accept every original ticket. Platform gaps remain explicit and are never converted into passes.
 
 **Common first action:** inspect the listed source and tests at the actual candidate; classify requested scope as existing/partial/absent/unverified and retain evidence. Extend existing behavior. For UX tickets validate the relevant proposed flow before changes. For every engine ticket check current official driver/server documentation, licensing, packaging, type model and fixture availability before adding a dependency.
 
@@ -16,13 +16,13 @@ This checklist contains **78 independently tracked tickets** transcribed from th
 | [ ] | [FIX-02](#fix-02) | M0 | P0 | Make shortcut labels and behavior platform-correct. | in-progress; acceptance pending |
 | [x] | [FIX-03](#fix-03) | M0 | P0 | Prevent ambiguous saved-query targeting. | implemented and verified locally |
 | [ ] | [FIX-04](#fix-04) | M0 | P0 | Make connection status accurate. | in-progress; acceptance pending |
-| [ ] | [FIX-05](#fix-05) | M0 | P0 | Close release-verification gaps. | in-progress; acceptance pending |
+| [ ] | [FIX-05](#fix-05) | M0 | P0 | Close release-verification gaps. | release gates expanded to13native installers and locked dependency audit; final publication evidence in RELEASE-CHECKPOINT.md |
 | [ ] | [UX-01](#ux-01) | M1 | P1 | Connection hub: folders, tags, favorites, recent targets, environment labels, duplicate profile, search. | in-progress; acceptance pending |
 | [ ] | [UX-02](#ux-02) | M1 | P1 | Connection wizard and actionable diagnostics. | in-progress; acceptance pending |
 | [ ] | [UX-03](#ux-03) | M1 | P1 | Command palette and object search. | in-progress; acceptance pending |
 | [ ] | [UX-04](#ux-04) | M1 | P1 | Productive query editor. | in-progress; partial implementation / acceptance pending |
 | [x] | [UX-05](#ux-05) | M1 | P1 | Typed query parameters. | implemented and verified locally |
-| [ ] | [UX-08](#ux-08) | M1 | P1 | Visible staged edits and transaction state. | in-progress; partial implementation / acceptance pending |
+| [ ] | [UX-08](#ux-08) | M1 | P1 | Visible staged edits and transaction state. | partial; pending insert/update/delete counts and missing-snapshot summary added; complete original acceptance remains open |
 | [ ] | [UX-11](#ux-11) | M1 | P1 | Accessible, consistent interaction. | in-progress; partial implementation / acceptance pending |
 | [ ] | [DB-01](#db-01) | M1 | P1 | MySQL | in-progress; acceptance pending |
 | [ ] | [DB-02](#db-02) | M1 | P1 | SQLite | in-progress; acceptance pending |
@@ -59,9 +59,9 @@ This checklist contains **78 independently tracked tickets** transcribed from th
 | [ ] | [ADV-09](#adv-09) | M4 | P2 | Database-to-database transfer | implemented; backend112/112, native UI5/5 and410MB transfer evidence; final acceptance reconciliation pending |
 | [ ] | [ADV-12](#adv-12) | M4 | P2 | Backup and restore workflows | implemented; real PG18.6 restore and interruption verified; platform/tool scope limits remain |
 | [ ] | [ADV-15](#adv-15) | M4 | P2 | Analytics workspace | implemented with native reports1/1 and persistence checks passed; integrated acceptance pending |
-| [ ] | [ADV-17](#adv-17) | M4 | P2 | Reliable desktop delivery | local macOSARM packaged workflow now passed; Windows/Linux/signing acceptance blocked |
+| [ ] | [ADV-17](#adv-17) | M4 | P2 | Reliable desktop delivery | native5platform delivery gates configured; signing/notarization still unavailable; see release checkpoint for actual outcomes |
 | [ ] | [EXT-06](#ext-06) | M4 | P2 | Valkey | standalone native backend and desktop passed; topology scope limitations documented |
-| [ ] | [EXT-08](#ext-08) | M4 | P2 | Managed PostgreSQL/MySQL/SQL Server | managed profile implementation and local TLS scope checks in worker B; cloud targets unavailable |
+| [ ] | [EXT-08](#ext-08) | M4 | P2 | Managed PostgreSQL/MySQL/SQL Server | integrated managed profiles/local TLS policies; real provider targets unavailable |
 | [ ] | [EXT-09](#ext-09) | M4 | P3 | CockroachDB and YugabyteDB | implemented; nativeCockroach/Yugabyte backend and desktop passed; final platform limits recorded |
 | [ ] | [EXT-10](#ext-10) | M4 | P3 | TiDB, Vitess, and relevant MySQL-compatible services | implemented; nativeTiDB and emulatedVitess backend and desktop passed; platform limits recorded |
 | [ ] | [DB-09](#db-09) | M5 | P2 | Snowflake | native API workflow candidate; real-service verification blocked by disposable account/credentials |
@@ -73,23 +73,23 @@ This checklist contains **78 independently tracked tickets** transcribed from th
 | [ ] | [DB-15](#db-15) | M5 | P2 | Neo4j | native graph workflow integrated; real backend and desktop passed; final combined/platform acceptance pending |
 | [ ] | [DB-16](#db-16) | M5 | P2 | DynamoDB | implemented; DynamoDBLocal3.3.1 native11/11+desktop1/1; AWS service IAM compatibility blocked |
 | [ ] | [DB-17](#db-17) | M5 | P2 | Cassandra | implemented; Cassandra5.0.9 native13/13 + desktop1/1; integrated focused gates passed |
-| [ ] | [DB-18](#db-18) | M5 | P3 | ScyllaDB | needs-reconciliation |
-| [ ] | [DB-19](#db-19) | M5 | P3 | Couchbase | needs-reconciliation |
+| [ ] | [DB-18](#db-18) | M5 | P3 | ScyllaDB | not integrated; frozen Scylla6.2.3 candidate outside repository,13native+1desktop historical passes |
+| [ ] | [DB-19](#db-19) | M5 | P3 | Couchbase | not integrated; external partial candidate7/8native, no desktop acceptance |
 | [ ] | [DB-20](#db-20) | M5 | P3 | CouchDB | native backend8/8 and desktop1/1 passed; integrated candidate gates underway |
-| [ ] | [DB-21](#db-21) | M5 | P3 | Azure Cosmos DB | needs-reconciliation |
-| [ ] | [DB-22](#db-22) | M5 | P3 | Firestore | needs-reconciliation |
+| [ ] | [DB-21](#db-21) | M5 | P3 | Azure Cosmos DB | not integrated; external partial protocol candidate; emulator license acceptance outstanding |
+| [ ] | [DB-22](#db-22) | M5 | P3 | Firestore | not integrated; external partial protocol candidate; native emulator download region-restricted |
 | [ ] | [DB-23](#db-23) | M5 | P2 | InfluxDB | implemented; Influx2.9.1 native6 + TLS1 + unit6 and desktop1/1; final candidate gate pending |
-| [ ] | [DB-24](#db-24) | M5 | P3 | QuestDB | implemented; QuestDB10.0.1 native7/7; desktop gate underway |
-| [ ] | [DB-25](#db-25) | M5 | P2 | Qdrant | worker A actual Qdrant native workflow passed; integration pending |
-| [ ] | [DB-26](#db-26) | M5 | P3 | Milvus | implemented; actualMilvus2.6.24 backend+desktop passed inworker; incrementalintegrationpending |
-| [ ] | [DB-27](#db-27) | M5 | P3 | Weaviate | worker A actual Weaviate native workflow passed; integration pending |
-| [ ] | [DB-28](#db-28) | M5 | P3 | Pinecone | worker A native API implementation candidate; scoped external account/index verification blocked |
+| [ ] | [DB-24](#db-24) | M5 | P3 | QuestDB | integrated; QuestDB10.0.1 native7/7 and desktop1/1 historical; final viewport polish acceptance incomplete |
+| [ ] | [DB-25](#db-25) | M5 | P2 | Qdrant | integrated; fresh Qdrant1.19.1 exact-ID/payload/catalog/filter/mutation pass plus TLS safety; whole-ticket acceptance remains open |
+| [ ] | [DB-26](#db-26) | M5 | P3 | Milvus | integrated; Milvus2.6.24 native backend/desktop historical evidence; fresh full-engine regression not run |
+| [ ] | [DB-27](#db-27) | M5 | P3 | Weaviate | integrated; native Weaviate historical evidence; unsupported filter translation fails explicitly; whole-ticket acceptance open |
+| [ ] | [DB-28](#db-28) | M5 | P3 | Pinecone | integrated opt-in API preview; protocol/safety checks only; real project/index/key unavailable |
 | [ ] | [DB-29](#db-29) | M5 | P3 | IBM Db2 | implemented; optional runtime safely unavailable on this laptop; native Db2 acceptance blocked |
 | [ ] | [DB-30](#db-30) | M5 | P3 | Firebird | implemented; Firebird5.0.4 native10/10 and desktop1/1 passed; packaging/platform gaps remain |
 | [ ] | [DB-31](#db-31) | M5 | P3 | SAP HANA | implemented native hdb candidate; local contracts and driver checks passed; real target verification blocked |
-| [ ] | [ADV-18](#adv-18) | M6 | P3 | Optional AI assistance | worker A opt-in provider/draft candidate; actual local-provider verification pending |
+| [ ] | [ADV-18](#adv-18) | M6 | P3 | Optional AI assistance | integrated opt-in provider preview/inert drafts; fresh desktop passed; actual local/cloud-provider generation still unverified |
 | [ ] | [ADV-19](#adv-19) | M6 | P3 | Optional team workflow | existing local file handoff coverage under reconciliation; no external sync enabled |
-| [ ] | [ADV-20](#adv-20) | M6 | P3 | Task automation | worker A opt-in automation candidate; native UI verification pending |
+| [ ] | [ADV-20](#adv-20) | M6 | P3 | Task automation | integrated opt-in tasks; fresh report desktop and cancellation/timezone/privacy regressions passed; whole import/export automation acceptance incomplete |
 
 ## Detailed tickets
 

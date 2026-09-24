@@ -40,7 +40,7 @@ jobs:
       - run: npm run db:seed
       - run: npm run test:integration
         env: { HARBOR_TIMESCALE: '1', HARBOR_MYSQL: '1' }
-      - run: xvfb-run --auto-servernum npx playwright test
+      - run: xvfb-run --auto-servernum npx playwright test --reporter=list,github
         env: { HARBOR_INTEGRATION: '1', HARBOR_TIMESCALE: '1' }
       - run: npm run package
       - run: xvfb-run --auto-servernum npx playwright test tests/package.e2e.ts

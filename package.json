@@ -1,6 +1,6 @@
 {
   "name": "harbor-db",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "A local desktop database workbench with SQL, document, key-value, graph and vector workflows",
   "homepage": "https://github.com/aligeek-tech/harbor-db",
   "repository": {

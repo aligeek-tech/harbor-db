@@ -51,3 +51,11 @@ MongoDB focused rerun `HARBOR_INTEGRATION=1 npx playwright test tests/mongo-ui.e
 Owned local fixtures are stopped, no disposable Electron process remains, and the two Db2 desktop screenshots created under untracked work/ were moved to W/db2-evidence. Dependencies/build/package outputs and external logs are retained. No unrelated runtime was stopped.
 
 Corrected dependency checks: full `npm audit --json` (including development dependencies) **PASS,0findings**, exit0; CQL safety7/7 and vector/automation20/20 pass; `npm run build` passes16.04s. The first focused command named a nonexistent cql.test.ts and therefore did not include CQL; the explicit cql-safety.test.ts run supplies that separate7case evidence. CI now audits the locked graph at high severity before release verification.
+
+## Native CI result and long-fixture input correction
+
+Release35979935766 at f362c8f/v0.1.9: **all five native installer jobs passed**, including actual packaged SQLite/DuckDB, sandbox, reload and diagnostics on Ubuntu24.04x64/ARM64, macOS15Intel/ARM64 and Windows2025x64. Both extra package jobs passed. Linux audit/static/unit/build/native integrations passed. Desktop gate:51pass,22skip,1fail. The sole failure was `pressSequentially` timing out at30seconds while typing a roughly1KB SQL fixture into Monaco in ux12-ui.e2e.ts, before performance measurement. All functional desktop cases passed. Publication was skipped, not forced.
+
+The performance fixture now uses browser bulk text input through Monaco's normal input event path; all other typing regressions retain individual keyboard events. Existing full persisted-SQL equality,5s catalog,8s query,250ms event-loop and1s settings thresholds remain unchanged. No model/workspace injection, retry or weaker threshold. Corrected candidate is **0.1.10**; v0.1.8/v0.1.9 tags are preserved, neither was published. Job-specific logs had a DNS/network failure; the standard GitHub run-log archive endpoint succeeded, without changing DNS/global settings or bypassing access controls.
+
+Local unchanged-threshold performance rerun after bulk fixture entry: **PASS1/1**, catalog188ms, query133ms, maximum measured event-loop delay122ms, exit0,4.23s. CI now emits GitHub test annotations alongside the ordinary list reporter for direct diagnosis if artifact log routing is unavailable.
