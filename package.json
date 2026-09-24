@@ -1,6 +1,6 @@
 {
   "name": "harbor-db",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "A local desktop database workbench with SQL, document, key-value, graph and vector workflows",
   "homepage": "https://github.com/aligeek-tech/harbor-db",
   "repository": {
@@ -102,7 +102,8 @@
   },
   "overrides": {
     "dompurify": "3.4.15",
-    "esbuild": "0.28.1"
+    "esbuild": "0.28.1",
+    "adm-zip": "0.6.1"
   },
   "peerDependencies": {
     "ibm_db": "4.0.1"

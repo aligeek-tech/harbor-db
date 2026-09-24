@@ -43,3 +43,11 @@ Earlier failed attempts remain failures: initial package probe hit a macOSKeycha
 Fresh fixtures are uniquely named `harbor-release-20260924` (Compose), `harbor-release-mysql-20260924` and `harbor-release-qdrant-20260924`, bound to loopback, synthetic data only. Existing unrelated/older containers and user configuration were preserved. Runtime shutdown and remote publication evidence will be appended after the final gates.
 
 MongoDB focused rerun `HARBOR_INTEGRATION=1 npx playwright test tests/mongo-ui.e2e.ts` / mongo-desktop: **PASS1/1**, exit0,3.44s; full real document edit/delete/saved-query/URI connection workflow completed after the locator correction.
+
+## Dependency audit correction before publication
+
+`npm audit --omit=dev --json` found2high findings: Cassandra4.9.0 transitively pinned adm-zip0.5.18, affected by GHSA-xcpc-8h2w-3j85, GHSA-vwc7-r8mq-g2x9 and GHSA-7q85-xj36-vmfc. The archive reader is used only by the driver's cloud secure-connect-bundle option; Harbor constructs an explicit direct Client and does not expose that option. Nevertheless the release workflow35979410821 was cancelled before publication. Tagv0.1.8 remains preserved and is not moved or reused. Corrected candidate is **0.1.9**, pinning only adm-zip0.6.1 via npm override; Cassandra driver stays4.9.0. `npm install --ignore-scripts --no-audit --no-fund` changed exactly one transitive package; no optional Db2 installation hook ran. Vendor advisory: https://github.com/advisories/GHSA-7q85-xj36-vmfc .
+
+Owned local fixtures are stopped, no disposable Electron process remains, and the two Db2 desktop screenshots created under untracked work/ were moved to W/db2-evidence. Dependencies/build/package outputs and external logs are retained. No unrelated runtime was stopped.
+
+Corrected dependency checks: full `npm audit --json` (including development dependencies) **PASS,0findings**, exit0; CQL safety7/7 and vector/automation20/20 pass; `npm run build` passes16.04s. The first focused command named a nonexistent cql.test.ts and therefore did not include CQL; the explicit cql-safety.test.ts run supplies that separate7case evidence. CI now audits the locked graph at high severity before release verification.
