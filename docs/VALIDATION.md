@@ -1,5 +1,17 @@
 # Validation record
 
+## September 27, 2026 — published v0.1.11
+
+[Issue #3](https://github.com/aligeek-tech/harbor-db/issues/3) is fixed and closed in [v0.1.11](https://github.com/aligeek-tech/harbor-db/releases/tag/v0.1.11), tagged at commit `278040da8df725e7dfa926b0477c61346c3d4370`. When a non-SRV MongoDB connection reaches its seed but replica-set discovery fails on an advertised hostname, the connection dialog now identifies replica-set discovery as the failing phase. It explains that every advertised member must resolve and be reachable for discovery and failover, and describes the existing opt-in **Direct connection** setting for environments where only the entered Host/Port is intentionally reachable. Direct mode remains explicit and states that it disables member discovery and automatic failover; Harbor DB does not rewrite server-advertised topology.
+
+Local verification used an isolated MongoDB 7 replica set bound to loopback port 27127 and advertising `mongodb1:27017`. The ordinary driver path reproduced `getaddrinfo ENOTFOUND mongodb1`; direct mode reached the writable primary and reported replica-set name `harbor_issue3`. The actual Electron regression rendered the new diagnosis after the failed ordinary connection, enabled **Direct connection**, and then completed a real connection test. The disposable fixture, standard MongoDB UI fixture and temporary probe were removed afterward.
+
+The local gates passed: clean locked install and zero-vulnerability audit, full ESLint, strict TypeScript, production build, 466 default unit tests with 336 explicit skips, 29 focused real-MongoDB adapter/lifecycle tests, the standard MongoDB desktop workflow, and both new desktop regressions. The [branch CI run](https://github.com/aligeek-tech/harbor-db/actions/runs/36296424650) passed on the release commit, including real-engine integration, desktop acceptance, Linux package smoke, and macOS/Windows packaging.
+
+The [release workflow](https://github.com/aligeek-tech/harbor-db/actions/runs/36297062255) passed all verification, native build and package-smoke jobs and published 13 installers plus `SHA256SUMS`. Its first verification attempt recorded one transient large-catalog responsiveness sample at 327.8 ms against a 250 ms bound; the exact commit had passed branch CI, and the failed job's unmodified retry passed the complete desktop and packaged-app suites. No threshold or application code changed for the retry.
+
+Public release verification found the exact expected installer set: AppImage, Debian, RPM and tarball for Linux x64 and ARM64; DMG and ZIP for Intel and Apple Silicon macOS; and the Windows x64 installer. All 14 public asset URLs returned anonymous HTTP 200. All 13 manifest entries matched GitHub's independently recorded SHA-256 asset digests. A fresh full download of `Harbor-DB-0.1.11-linux-aarch64.rpm` was additionally rehashed to `227bc50d5d6ab2b04a213f808abccf2afabd041c19b4ebfe5bb35c3d3cd6851c`; the other 12 installers are not claimed as full local rehashes. Existing signing limitations remain unchanged.
+
 ## September24, 2026 — published v0.1.10
 
 Published 0.1.10 evidence, native platform gates, test counts and explicit limitations are in [RELEASE-CHECKPOINT.md](roadmap/RELEASE-CHECKPOINT.md). Release workflow35981461078 and branch CI35981443428 passed at346fe241a7c4c6c94b870a84d8d2235f252dd5a3. All13public installer URLs returnedHTTP200; GitHub asset digests matchSHA256SUMS. Two full local downloads were additionally rehashed; the other11 are not claimed as full local rehashes.
