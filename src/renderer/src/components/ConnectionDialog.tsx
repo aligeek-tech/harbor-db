@@ -53,7 +53,13 @@ export function ConnectionDialog({ initial, onClose }: { initial?: ConnectionPro
   const safeFeedback = feedback
     ? redactConnectionMessage(feedback.text, [password, sshPassword, passphrase, sentinelPassword, url])
     : ''
-  const diagnostic = feedback && !feedback.ok ? connectionDiagnostic(safeFeedback) : null
+  const diagnostic =
+    feedback && !feedback.ok
+      ? connectionDiagnostic(safeFeedback, {
+          engine: profile.engine,
+          mongoSrv: profile.engine === 'mongodb' && profile.mongo.srv,
+        })
+      : null
   const confirm = useConfirm()
   const update = (partial: Partial<ConnectionProfile>) => {
     setProfile((p) => ({ ...p, ...partial }))

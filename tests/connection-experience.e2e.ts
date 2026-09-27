@@ -103,6 +103,61 @@ test('connection hub filters favorites and URI review is redacted, engine-specif
   }
 })
 
+test('MongoDB connection form explains advertised members and the direct-mode tradeoff', async () => {
+  const userData = await mkdtemp(join(tmpdir(), 'harbor-mongo-direct-guidance-'))
+  let desktop: ElectronApplication | undefined
+  try {
+    const launched = await launch(userData)
+    desktop = launched.desktop
+    const page = launched.page
+    await page.getByRole('button', { name: 'New connection', exact: true }).click()
+    const dialog = page.getByRole('dialog', { name: 'New connection', exact: true })
+    await selectDatabaseEngine(dialog, 'MongoDB')
+    await expect(dialog).toContainText(
+      'every member hostname advertised by the replica set must resolve and be reachable',
+    )
+    await expect(dialog).toContainText('If only the entered Host/Port is reachable')
+    await dialog.getByLabel('Direct connection to this host', { exact: true }).check()
+    await expect(dialog).toContainText(
+      'It does not discover advertised replica-set members or provide replica-set failover.',
+    )
+    await expect(dialog.getByRole('button', { name: 'Add MongoDB seed', exact: true })).toBeDisabled()
+  } finally {
+    await desktop?.close()
+    await rm(userData, { recursive: true, force: true })
+  }
+})
+
+test('MongoDB direct mode reaches one endpoint when discovery advertises an unreachable hostname', async () => {
+  const fixturePort = Number(process.env.HARBOR_MONGO_ADVERTISED_PORT || 0)
+  test.skip(!fixturePort, 'Requires the disposable advertised-host replica-set fixture.')
+  const userData = await mkdtemp(join(tmpdir(), 'harbor-mongo-advertised-host-'))
+  let desktop: ElectronApplication | undefined
+  try {
+    const launched = await launch(userData)
+    desktop = launched.desktop
+    const page = launched.page
+    await page.getByRole('button', { name: 'New connection', exact: true }).click()
+    const dialog = page.getByRole('dialog', { name: 'New connection', exact: true })
+    await selectDatabaseEngine(dialog, 'MongoDB')
+    await dialog.getByLabel('Host', { exact: true }).fill('127.0.0.1')
+    await dialog.getByLabel('Port', { exact: true }).fill(String(fixturePort))
+    await dialog.getByLabel('MongoDB replica set', { exact: true }).fill('harbor_issue3')
+    await dialog.getByText('Organization & connection preferences', { exact: true }).click()
+    await dialog.getByLabel('Connect timeout', { exact: true }).fill('1000')
+    await dialog.getByRole('button', { name: 'Test connection', exact: true }).click()
+    await expect(dialog.getByRole('alert')).toContainText('getaddrinfo ENOTFOUND mongodb1')
+    await expect(dialog.getByRole('alert')).toContainText('MongoDB replica-set discovery')
+    await expect(dialog.getByRole('alert')).toContainText('enable Direct connection to this host')
+    await dialog.getByLabel('Direct connection to this host', { exact: true }).check()
+    await dialog.getByRole('button', { name: 'Test connection', exact: true }).click()
+    await expect(dialog.getByText(/Connection successful · MongoDB ·/)).toBeVisible()
+  } finally {
+    await desktop?.close()
+    await rm(userData, { recursive: true, force: true })
+  }
+})
+
 test('palette loads one PostgreSQL catalog and selected table indexes without executing user SQL', async () => {
   test.skip(process.env.HARBOR_INTEGRATION !== '1', 'Requires the disposable PostgreSQL service.')
   const userData = await mkdtemp(join(tmpdir(), 'harbor-catalog-search-'))

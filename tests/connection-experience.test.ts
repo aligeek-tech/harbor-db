@@ -79,6 +79,24 @@ describe('actionable connection diagnostics', () => {
   ])('classifies only supported error evidence: %s', (message, category) => {
     expect(connectionDiagnostic(message).category).toBe(category)
   })
+  it('explains MongoDB advertised-host failures without changing generic or SRV DNS guidance', () => {
+    const advertised = connectionDiagnostic('getaddrinfo EAI_AGAIN mongodb1', {
+      engine: 'mongodb',
+      mongoSrv: false,
+    })
+    expect(advertised.category).toBe('MongoDB replica-set discovery')
+    expect(advertised.nextStep).toContain('enable Direct connection to this host')
+    expect(advertised.nextStep).toContain('does not discover or fail over')
+    expect(connectionDiagnostic('getaddrinfo EAI_AGAIN mongodb1', { engine: 'postgres' }).category).toBe(
+      'DNS lookup',
+    )
+    expect(
+      connectionDiagnostic('querySrv ENOTFOUND _mongodb._tcp.cluster.example', {
+        engine: 'mongodb',
+        mongoSrv: true,
+      }).category,
+    ).toBe('DNS lookup')
+  })
   it('redacts supplied secrets, URI credentials and key-value credentials', () => {
     const output = redactConnectionMessage(
       'connection postgres://user:password@host/db failed token=abcd key super-secret',

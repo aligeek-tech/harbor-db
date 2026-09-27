@@ -1,6 +1,6 @@
 # Capabilities and limits
 
-This document describes the **0.1.10 release** built from the integrated roadmap checkpoint. Publication and final artifact verification are recorded separately in VALIDATION.md. Ticket acceptance and current evidence remain in [the roadmap backlog](roadmap/BACKLOG.md), [progress](roadmap/PROGRESS.md), and [verification evidence](roadmap/EVIDENCE.md). Adapter presence, a passing handshake, and a package build are distinct from full compatibility acceptance.
+This document describes the **0.1.11 release** built from the integrated roadmap checkpoint. Publication and final artifact verification are recorded separately in VALIDATION.md. Ticket acceptance and current evidence remain in [the roadmap backlog](roadmap/BACKLOG.md), [progress](roadmap/PROGRESS.md), and [verification evidence](roadmap/EVIDENCE.md). Adapter presence, a passing handshake, and a package build are distinct from full compatibility acceptance.
 
 ## Observed engine support
 
@@ -43,7 +43,7 @@ PostgreSQL/MariaDB/MySQL reuse username/password, verified TLS/client certificat
 
 ## MongoDB
 
-- Connect with username/password, an authentication database, TLS certificates, optional replica-set name, direct mode or DNS SRV discovery. One seed hostname or SRV name is supported; comma-separated seed lists, external authentication mechanisms, and arbitrary URI options are not. SSH forwarding uses a direct connection and cannot perform replica-set/SRV discovery.
+- Connect with username/password, an authentication database, TLS certificates, optional replica-set name, up to eleven seed endpoints, direct mode or DNS SRV discovery. Replica-set discovery uses the member addresses advertised by MongoDB, so every member must resolve and be reachable from the laptop for failover. When only the entered Host/Port is intentionally reachable, direct mode bypasses member discovery and failover; Harbor does not rewrite advertised hostnames. External authentication mechanisms and arbitrary URI options are not supported. SSH forwarding uses direct mode and cannot perform replica-set/SRV discovery.
 - Browse authorized databases and collections; enter a target manually when catalog permissions are limited. Find accepts an Extended JSON filter object; aggregate accepts a JSON pipeline array. This is not a JavaScript/mongosh console. Write aggregation stages and server-side JavaScript are rejected, including nested stages.
 - Each page retains at most 100 documents / 4 MiB and displays the first 200 distinct top-level fields. Column arrows sort on the server before page limits; aggregate sorting applies to pipeline output. Offset pagination is not a snapshot and can change under concurrent writes; large unindexed sorts can time out. Queries use the configured timeout; there is no manual cancellation control.
 - Double-click any result cell to open the complete canonical Extended JSON document. Insert, replacement and single-document deletion require confirmation and writes enabled. Replacement preserves `_id`; replacement/deletion match the complete original document atomically and fail on a concurrent change. BSON ObjectId, dates, long integers, decimals and binary values retain their types. Aggregation results and documents over 1,000,000 characters are view-only. System collections cannot be edited.

@@ -135,7 +135,12 @@ export function MongoConnectionFields({
       <p className="field-note full-field">
         {mongo.srv
           ? 'Use the SRV DNS hostname without a custom port. DNS discovers members; verified TLS remains required. Atlas is a MongoDB deployment, not another engine.'
-          : 'The main Host/Port is the first seed. Discovered member addresses must be reachable from this laptop. Multiple seeds or discovery cannot traverse one SSH tunnel.'}{' '}
+          : mongo.directConnection
+            ? 'Direct mode sends operations only to the entered Host/Port. It does not discover advertised replica-set members or provide replica-set failover.'
+            : 'The main Host/Port is the first seed. For discovery and failover, every member hostname advertised by the replica set must resolve and be reachable from this laptop through DNS or VPN. If only the entered Host/Port is reachable, enable Direct connection to this host.'}{' '}
+        {profile.ssh.enabled
+          ? 'An SSH tunnel uses direct mode because one tunnel cannot carry replica-set discovery.'
+          : ''}{' '}
         {mongo.readPreference !== 'primary'
           ? 'Secondary reads can be stale. Writes still require a writable primary.'
           : 'Reads prefer the writable primary.'}{' '}

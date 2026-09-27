@@ -9,7 +9,15 @@ export function redactConnectionMessage(message: string, secrets: string[] = [])
     )
 }
 
-export function connectionDiagnostic(message: string): { category: string; nextStep: string } {
+interface ConnectionDiagnosticContext {
+  engine?: string
+  mongoSrv?: boolean
+}
+
+export function connectionDiagnostic(
+  message: string,
+  context: ConnectionDiagnosticContext = {},
+): { category: string; nextStep: string } {
   if (
     /ER_CANNOT_RETRIEVE_RSA_KEY|RSA public key is not available|caching_sha2_password.*secure connection/i.test(
       message,
@@ -37,6 +45,16 @@ export function connectionDiagnostic(message: string): { category: string; nextS
       category: 'SSH tunnel',
       nextStep:
         'Check the SSH host, account, key and pinned host fingerprint. Confirm the database is reachable from the SSH server.',
+    }
+  if (
+    context.engine === 'mongodb' &&
+    !context.mongoSrv &&
+    /ENOTFOUND|EAI_AGAIN|name or service not known|getaddrinfo/i.test(message)
+  )
+    return {
+      category: 'MongoDB replica-set discovery',
+      nextStep:
+        'The initial host can be reachable while the replica set advertises another hostname that this laptop cannot resolve. For discovery and failover, make every advertised member reachable through DNS or VPN. If only the entered Host/Port is intentionally reachable, enable Direct connection to this host; direct mode does not discover or fail over to other members.',
     }
   if (/ENOTFOUND|EAI_AGAIN|querySrv|DNS|name or service not known|getaddrinfo/i.test(message))
     return {
